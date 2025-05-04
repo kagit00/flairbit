@@ -1,0 +1,45 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <changeSet id="20250502-01-create-media-files" author="grok">
+        <sql dbms="postgresql">
+            CREATE TABLE media_files (
+            id UUID NOT NULL DEFAULT gen_random_uuid(),
+            profile_id UUID NOT NULL,
+            original_file_name VARCHAR(255) NOT NULL,
+            file_type VARCHAR(50) NOT NULL,
+            reel_type VARCHAR(20),
+            file_size BIGINT,
+            file_path VARCHAR(500) NOT NULL,
+            display_order INTEGER NOT NULL,
+            uploaded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            version BIGINT NOT NULL DEFAULT 0,
+            PRIMARY KEY (id, uploaded_at),
+            UNIQUE (id, uploaded_at)
+            ) PARTITION BY RANGE (uploaded_at);
+        </sql>
+    </changeSet>
+
+    <changeSet id="20250502-02-partitions-media-files" author="grok">
+        <sql dbms="postgresql">
+            CREATE TABLE media_files_y2025m05 PARTITION OF media_files
+            FOR VALUES FROM ('2025-05-01') TO ('2025-06-01');
+
+            CREATE TABLE media_files_y2025m06 PARTITION OF media_files
+            FOR VALUES FROM ('2025-06-01') TO ('2025-07-01');
+
+            CREATE TABLE media_files_y2025m07 PARTITION OF media_files
+            FOR VALUES FROM ('2025-07-01') TO ('2025-08-01');
+        </sql>
+    </changeSet>
+
+    <changeSet id="20250502-03-indexes-media-files" author="grok">
+        <sql dbms="postgresql">
+            CREATE INDEX idx_media_files_profile_reel_type ON media_files(profile_id, reel_type);
+            CREATE INDEX idx_media_files_uploaded_at ON media_files(uploaded_at);
+            CREATE INDEX idx_media_files_id ON media_files(id);
+        </sql>
+    </changeSet>
+</databaseChangeLog>

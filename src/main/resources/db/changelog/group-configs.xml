@@ -1,0 +1,61 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <changeSet id="create-group-config-table" author="yourname">
+        <createTable tableName="group_config">
+            <column name="id" type="VARCHAR(255)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="type" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"/>
+            <column name="intent" type="VARCHAR(30)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="add-unique-constraint-group-config-id" author="yourname">
+        <addUniqueConstraint tableName="group_config" columnNames="id" constraintName="uk_group_config_id"/>
+    </changeSet>
+
+    <changeSet id="check-type-enum-values" author="yourname" dbms="postgresql">
+        <sql>
+            ALTER TABLE group_config
+            ADD CONSTRAINT ck_group_config_type CHECK (type IN ('COST_BASED', 'NON_COST_BASED'));
+        </sql>
+    </changeSet>
+
+    <changeSet id="insert-sample-group-configs" author="yourname" context="dev,test">
+        <insert tableName="group_config">
+            <column name="id" value="dating-default"/>
+            <column name="type" value="COST_BASED"/>
+            <column name="active" valueBoolean="true"/>
+            <column name="intent" value="DATING"/>
+        </insert>
+        <insert tableName="group_config">
+            <column name="id" value="marriage-default"/>
+            <column name="type" value="COST_BASED"/>
+            <column name="active" valueBoolean="true"/>
+            <column name="intent" value="MARRIAGE"/>
+        </insert>
+        <insert tableName="group_config">
+            <column name="id" value="bff-default"/>
+            <column name="type" value="NON_COST_BASED"/>
+            <column name="active" valueBoolean="true"/>
+            <column name="intent" value="BFF"/>
+        </insert>
+        <insert tableName="group_config">
+            <column name="id" value="random-interact-default"/>
+            <column name="type" value="NON_COST_BASED"/>
+            <column name="active" valueBoolean="true"/>
+            <column name="intent" value="RANDOM_CHAT_CALL"/>
+        </insert>
+    </changeSet>
+
+</databaseChangeLog>
+

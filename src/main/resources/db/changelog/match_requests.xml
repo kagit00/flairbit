@@ -1,0 +1,64 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <changeSet id="20250502-12-match-requests" author="grok">
+        <sql dbms="postgresql">
+            CREATE TABLE match_requests (
+            id UUID NOT NULL DEFAULT gen_random_uuid(),
+            from_user_id UUID NOT NULL,
+            to_user_id UUID NOT NULL,
+            reel_id UUID NOT NULL,
+            reel_uploaded_at TIMESTAMP NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at_partition TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            version BIGINT NOT NULL DEFAULT 0,
+            PRIMARY KEY (id, created_at_partition),
+            UNIQUE (from_user_id, to_user_id, reel_id, created_at_partition)
+            ) PARTITION BY RANGE (created_at_partition);
+        </sql>
+    </changeSet>
+
+    <changeSet id="20250502-13-partitions-match-requests" author="grok">
+        <sql dbms="postgresql">
+            CREATE TABLE match_requests_y2025m05 PARTITION OF match_requests
+            FOR VALUES FROM ('2025-05-01') TO ('2025-06-01');
+
+            CREATE TABLE match_requests_y2025m06 PARTITION OF match_requests
+            FOR VALUES FROM ('2025-06-01') TO ('2025-07-01');
+
+            CREATE TABLE match_requests_y2025m07 PARTITION OF match_requests
+            FOR VALUES FROM ('2025-07-01') TO ('2025-08-01');
+        </sql>
+    </changeSet>
+
+    <changeSet id="20250502-14-foreign-keys-match-requests" author="grok">
+        <sql dbms="postgresql">
+            ALTER TABLE match_requests
+            ADD CONSTRAINT fk_match_requests_from_user
+            FOREIGN KEY (from_user_id)
+            REFERENCES users(id);
+
+            ALTER TABLE match_requests
+            ADD CONSTRAINT fk_match_requests_to_user
+            FOREIGN KEY (to_user_id)
+            REFERENCES users(id);
+
+            ALTER TABLE match_requests
+            ADD CONSTRAINT fk_match_requests_reel
+            FOREIGN KEY (reel_id, reel_uploaded_at)
+            REFERENCES media_files(id, uploaded_at);
+        </sql>
+    </changeSet>
+
+    <changeSet id="20250502-15-indexes-match-requests" author="grok">
+        <sql dbms="postgresql">
+            CREATE INDEX idx_match_requests_users ON match_requests(from_user_id, to_user_id);
+            CREATE INDEX idx_match_requests_created_at ON match_requests(created_at);
+            CREATE INDEX idx_match_requests_status ON match_requests(status);
+        </sql>
+    </changeSet>
+</databaseChangeLog>

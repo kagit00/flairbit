@@ -1,0 +1,41 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <changeSet id="20250417-07-locations" author="grok">
+        <createTable tableName="locations">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="profile_id" type="UUID">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="city" type="VARCHAR(100)"/>
+            <column name="country" type="VARCHAR(100)"/>
+            <column name="latitude" type="DOUBLE"/>
+            <column name="longitude" type="DOUBLE"/>
+            <column name="version" type="BIGINT" defaultValue="0">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="locations"
+                                 baseColumnNames="profile_id"
+                                 referencedTableName="profiles"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_locations_profile"/>
+        <createIndex tableName="locations" indexName="idx_locations_profile_id" unique="true">
+            <column name="profile_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="20250504-05-add-timestamps-to-locations" author="grok">
+        <addColumn tableName="locations">
+            <column name="created_at" type="TIMESTAMP"/>
+            <column name="updated_at" type="TIMESTAMP"/>
+        </addColumn>
+    </changeSet>
+
+
+</databaseChangeLog>

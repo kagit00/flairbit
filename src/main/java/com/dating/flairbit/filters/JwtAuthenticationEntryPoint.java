@@ -1,0 +1,18 @@
+package com.dating.flairbit.filters;
+
+import com.dating.flairbit.utils.basic.ErrorUtility;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.stereotype.Component;
+
+
+@Component
+public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
+
+    @Override
+    public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException e) {
+        ErrorUtility.printError(e.getMessage(), response);
+    }
+}

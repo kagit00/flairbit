@@ -1,0 +1,56 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <changeSet id="match-table-01" author="gsss">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="matches"/>
+        </preConditions>
+        <dropTable tableName="matches"/>
+    </changeSet>
+
+    <changeSet id="match-table-02" author="gsss">
+        <createTable tableName="matches">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="group_id" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="participant_id" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="matched_participant_id" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP"/>
+            <column name="compatibility_score" type="DOUBLE PRECISION">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex indexName="idx_matches_group_id" tableName="matches">
+            <column name="group_id"/>
+        </createIndex>
+
+        <createIndex indexName="idx_matches_participant_id" tableName="matches">
+            <column name="participant_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="graph-59-rename-table" author="gsss">
+        <renameTable oldTableName="export_jobs" newTableName="matches_import_jobs"/>
+    </changeSet>
+
+    <changeSet id="graph-60-rename-table" author="gsss">
+        <renameTable oldTableName="matches_import_jobs" newTableName="match_suggestions_import_jobs"/>
+    </changeSet>
+
+
+    <changeSet id="graph-61-rename-table" author="gsss">
+        <renameTable oldTableName="matches" newTableName="match_suggestions"/>
+    </changeSet>
+
+</databaseChangeLog>

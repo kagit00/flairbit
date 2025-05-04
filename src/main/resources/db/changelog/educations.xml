@@ -1,0 +1,40 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <changeSet id="20250417-05-educations" author="grok">
+        <createTable tableName="educations">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="profile_id" type="UUID">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="degree" type="VARCHAR(100)"/>
+            <column name="institution" type="VARCHAR(200)"/>
+            <column name="field_of_study" type="VARCHAR(100)"/>
+            <column name="graduation_year" type="INTEGER"/>
+            <column name="version" type="BIGINT" defaultValue="0">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="educations"
+                                 baseColumnNames="profile_id"
+                                 referencedTableName="profiles"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_educations_profile"/>
+        <createIndex tableName="educations" indexName="idx_educations_profile_id" unique="true">
+            <column name="profile_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="20250504-02-add-timestamps-to-educations" author="grok">
+        <addColumn tableName="educations">
+            <column name="created_at" type="TIMESTAMP"/>
+            <column name="updated_at" type="TIMESTAMP"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

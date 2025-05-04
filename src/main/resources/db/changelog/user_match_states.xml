@@ -1,0 +1,63 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <changeSet id="20250417-13-user-match-states" author="grok">
+        <createTable tableName="user_match_states">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="profile_id" type="UUID">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="sent_to_matching_service" type="BOOLEAN" defaultValue="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="profile_complete" type="BOOLEAN" defaultValue="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ready_for_matching" type="BOOLEAN" defaultValue="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="intent" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="gender" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="date_of_birth" type="DATE"/>
+            <column name="last_matched_at" type="TIMESTAMP"/>
+            <column name="group_id" type="VARCHAR(255)"/>
+            <column name="version" type="BIGINT" defaultValue="0">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="user_match_states"
+                                 baseColumnNames="profile_id"
+                                 referencedTableName="profiles"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_user_match_states_profile"/>
+        <createIndex tableName="user_match_states" indexName="idx_user_match_states_profile_id" unique="true">
+            <column name="profile_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="20250504-01-add-timestamps-to-user-match-states" author="grok">
+        <addColumn tableName="user_match_states">
+            <column name="created_at" type="TIMESTAMP"/>
+            <column name="updated_at" type="TIMESTAMP"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="20250503-04-create-index-usermatchstates-userid-intent" author="yourname">
+        <createIndex indexName="idx_usermatchstates_userid_intent" tableName="user_match_states">
+            <column name="profile_id"/>
+            <column name="intent"/>
+        </createIndex>
+    </changeSet>
+
+
+
+</databaseChangeLog>

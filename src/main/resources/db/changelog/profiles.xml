@@ -1,0 +1,71 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <changeSet id="20250417-04-profiles" author="grok">
+        <createTable tableName="profiles">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="UUID">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="display_name" type="VARCHAR(100)"/>
+            <column name="headline" type="VARCHAR(200)"/>
+            <column name="bio" type="VARCHAR(500)"/>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP"/>
+            <column name="version" type="BIGINT" defaultValue="0">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="profiles"
+                                 baseColumnNames="user_id"
+                                 referencedTableName="users"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_profiles_user"/>
+        <createIndex tableName="profiles" indexName="idx_profiles_user_id" unique="true">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="20250503-01-drop-unique-user-id-on-profiles" author="yourname">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="1">
+                SELECT COUNT(*) FROM information_schema.table_constraints
+                WHERE constraint_name = 'profiles_user_id_key'
+                AND table_name = 'profiles';
+            </sqlCheck>
+        </preConditions>
+
+        <dropUniqueConstraint
+                tableName="profiles"
+                constraintName="profiles_user_id_key"/>
+    </changeSet>
+
+    <changeSet id="20250503-02-drop-unique-index-profiles-user-id" author="yourname">
+        <preConditions onFail="MARK_RAN">
+            <indexExists
+                    tableName="profiles"
+                    indexName="idx_profiles_user_id"/>
+        </preConditions>
+
+        <dropIndex
+                tableName="profiles"
+                indexName="idx_profiles_user_id"/>
+    </changeSet>
+
+    <changeSet id="20250503-03-create-nonunique-index-profiles-user-id" author="yourname">
+        <createIndex
+                tableName="profiles"
+                indexName="idx_profiles_user_id"
+                unique="false">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

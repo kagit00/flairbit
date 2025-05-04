@@ -1,0 +1,55 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <changeSet id="20250502-04-create-reel-interactions" author="grok">
+        <sql dbms="postgresql">
+            CREATE TABLE reel_interactions (
+            id UUID NOT NULL DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL,
+            reel_id UUID NOT NULL,
+            reel_uploaded_at TIMESTAMP NOT NULL,
+            interaction_type VARCHAR(20) NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            version BIGINT NOT NULL DEFAULT 0,
+            PRIMARY KEY (id, created_at),
+            UNIQUE (user_id, reel_id, interaction_type, created_at)
+            ) PARTITION BY RANGE (created_at);
+        </sql>
+    </changeSet>
+
+    <changeSet id="20250502-05-partitions-reel-interactions" author="grok">
+        <sql dbms="postgresql">
+            CREATE TABLE reel_interactions_y2025m05 PARTITION OF reel_interactions
+            FOR VALUES FROM ('2025-05-01') TO ('2025-06-01');
+
+            CREATE TABLE reel_interactions_y2025m06 PARTITION OF reel_interactions
+            FOR VALUES FROM ('2025-06-01') TO ('2025-07-01');
+
+            CREATE TABLE reel_interactions_y2025m07 PARTITION OF reel_interactions
+            FOR VALUES FROM ('2025-07-01') TO ('2025-08-01');
+        </sql>
+    </changeSet>
+
+    <changeSet id="20250502-06-indexes-reel-interactions" author="grok">
+        <sql dbms="postgresql">
+            CREATE INDEX idx_reel_interactions_reel_type ON reel_interactions(reel_id, interaction_type);
+            CREATE INDEX idx_reel_interactions_created_at ON reel_interactions(created_at);
+        </sql>
+    </changeSet>
+
+    <changeSet id="20250502-07-foreign-key-reel-media" author="grok">
+        <sql dbms="postgresql">
+            ALTER TABLE reel_interactions
+            ADD CONSTRAINT fk_reel_interactions_reel
+            FOREIGN KEY (reel_id, reel_uploaded_at)
+            REFERENCES media_files(id, uploaded_at);
+
+            ALTER TABLE reel_interactions
+            ADD CONSTRAINT fk_reel_interactions_user
+            FOREIGN KEY (user_id)
+            REFERENCES users(id);
+        </sql>
+    </changeSet>
+</databaseChangeLog>

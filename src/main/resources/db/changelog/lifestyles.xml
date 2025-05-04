@@ -1,0 +1,40 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <changeSet id="20250417-08-lifestyles" author="grok">
+        <createTable tableName="lifestyles">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="profile_id" type="UUID">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="drinks" type="BOOLEAN"/>
+            <column name="smokes" type="BOOLEAN"/>
+            <column name="religion" type="VARCHAR(50)"/>
+            <column name="version" type="BIGINT" defaultValue="0">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="lifestyles"
+                                 baseColumnNames="profile_id"
+                                 referencedTableName="profiles"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_lifestyles_profile"/>
+        <createIndex tableName="lifestyles" indexName="idx_lifestyles_profile_id" unique="true">
+            <column name="profile_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="20250504-03-add-timestamps-to-lifestyles" author="grok">
+        <addColumn tableName="lifestyles">
+            <column name="created_at" type="TIMESTAMP"/>
+            <column name="updated_at" type="TIMESTAMP"/>
+        </addColumn>
+    </changeSet>
+
+
+</databaseChangeLog>

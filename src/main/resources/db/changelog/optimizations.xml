@@ -1,0 +1,32 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <changeSet id="20250502-16-foreign-key-media-files" author="grok">
+        <sql dbms="postgresql">
+            ALTER TABLE media_files
+            ADD CONSTRAINT fk_media_files_profile
+            FOREIGN KEY (profile_id)
+            REFERENCES profiles(id);
+        </sql>
+    </changeSet>
+
+    <changeSet id="20250502-17-materialized-views" author="grok">
+        <sql dbms="postgresql">
+            CREATE MATERIALIZED VIEW media_like_counts AS
+            SELECT ri.reel_id, COUNT(ri.id) as like_count
+            FROM reel_interactions ri
+            WHERE ri.interaction_type = 'LIKE'
+            GROUP BY ri.reel_id;
+            CREATE INDEX idx_media_like_counts_reel_id ON media_like_counts(reel_id);
+
+            CREATE MATERIALIZED VIEW media_view_counts AS
+            SELECT ri.reel_id, COUNT(ri.id) as view_count
+            FROM reel_interactions ri
+            WHERE ri.interaction_type = 'VIEW'
+            GROUP BY ri.reel_id;
+            CREATE INDEX idx_media_view_counts_reel_id ON media_view_counts(reel_id);
+        </sql>
+    </changeSet>
+</databaseChangeLog>

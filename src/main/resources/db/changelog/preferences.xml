@@ -1,0 +1,43 @@
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <changeSet id="20250417-09-preferences" author="grok">
+        <createTable tableName="preferences">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="profile_id" type="UUID">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="preferred_min_age" type="INTEGER"/>
+            <column name="preferred_max_age" type="INTEGER"/>
+            <column name="relationship_type" type="VARCHAR(50)"/>
+            <column name="wants_kids" type="BOOLEAN"/>
+            <column name="open_to_long_distance" type="BOOLEAN"/>
+            <column name="preferred_genders" type="VARCHAR(200)"/>
+            <column name="version" type="BIGINT" defaultValue="0">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="preferences"
+                                 baseColumnNames="profile_id"
+                                 referencedTableName="profiles"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_preferences_profile"/>
+        <createIndex tableName="preferences" indexName="idx_preferences_profile_id" unique="true">
+            <column name="profile_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="20250504-06-add-timestamps-to-preferences" author="grok">
+        <addColumn tableName="preferences">
+            <column name="created_at" type="TIMESTAMP"/>
+            <column name="updated_at" type="TIMESTAMP"/>
+        </addColumn>
+    </changeSet>
+
+
+</databaseChangeLog>
