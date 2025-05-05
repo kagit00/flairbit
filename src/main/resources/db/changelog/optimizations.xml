@@ -29,4 +29,5 @@
             CREATE INDEX idx_media_view_counts_reel_id ON media_view_counts(reel_id);
         </sql>
     </changeSet>
+
 </databaseChangeLog>

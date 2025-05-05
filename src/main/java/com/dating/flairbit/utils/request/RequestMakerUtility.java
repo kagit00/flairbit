@@ -2,6 +2,7 @@ package com.dating.flairbit.utils.request;
 
 import com.dating.flairbit.dto.*;
 import com.dating.flairbit.dto.NodesTransferJobExchange;
+import com.dating.flairbit.dto.db.UserExportDTO;
 import com.dating.flairbit.dto.enums.InteractionType;
 import com.dating.flairbit.dto.enums.JobStatus;
 import com.dating.flairbit.dto.enums.NodeType;
@@ -11,6 +12,8 @@ import com.dating.flairbit.models.*;
 import com.dating.flairbit.utils.basic.BasicUtility;
 import com.dating.flairbit.utils.basic.DefaultValuesPopulator;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -125,5 +128,65 @@ public final class RequestMakerUtility {
                 .sentToMatchingService(false)
                 .profileComplete(false)
                 .build();
+    }
+
+    public static Page<UserExportDTO> transformToUserExportDTO(Page<Object[]> results) {
+        List<UserExportDTO> dtos = results.getContent().stream().map(result ->
+                new UserExportDTO((UUID) result[0], (String) result[1], (UUID) result[2], (String) result[3], (String) result[4],
+                        (String) result[5], (Boolean) result[6], (Boolean) result[7], (String) result[8], (Boolean) result[9],
+                        (String) result[10], (Integer) result[11], (Integer) result[12], (String) result[13], (Boolean) result[14],
+                        (String) result[15], (String) result[16], (String) result[17], ((java.sql.Date) result[18]).toLocalDate(), (String) result[19],
+                        (Boolean) result[20], (String) result[21]
+                )
+        ).toList();
+
+        return new PageImpl<>(dtos, results.getPageable(), results.getTotalElements());
+    }
+
+    public static User buildUserFromUserExportDTO(UserExportDTO dto) {
+        return User.builder()
+                .id(dto.getUserId())
+                .username(dto.getUsername())
+                .build();
+    }
+
+    public static Profile buildProfileFromUserExportDto(UserExportDTO dto) {
+        return Profile.builder()
+                .id(dto.getProfileId())
+                .displayName(dto.getDisplayName())
+                .bio(dto.getBio())
+                .location(
+                        Location.builder()
+                                .city(dto.getCity())
+                                .build()
+                ).lifestyle(
+                        Lifestyle.builder()
+                                .smokes(dto.getSmokes())
+                                .drinks(dto.getDrinks())
+                                .religion(dto.getReligion())
+                                .build()
+                ).preferences(
+                        Preferences.builder()
+                                .wantsKids(dto.getWantsKids())
+                                .preferredGenders(new HashSet<>(Arrays.asList(dto.getPreferredGenders().split(","))))
+                                .preferredMinAge(dto.getPreferredMinAge())
+                                .preferredMaxAge(dto.getPreferredMaxAge())
+                                .openToLongDistance(dto.getOpenToLongDistance())
+                                .build()
+                ).education(
+                        Education.builder()
+                                .fieldOfStudy(dto.getFieldOfStudy())
+                                .build()
+                ).profession(
+                        Profession.builder()
+                                .industry(dto.getIndustry())
+                                .build()
+                ).userMatchState(UserMatchState.builder()
+                        .gender(dto.getGender())
+                        .dateOfBirth(dto.getDateOfBirth())
+                        .intent(dto.getIntent())
+                        .readyForMatching(dto.getReadyForMatching())
+                        .build()
+                ).build();
     }
 }

@@ -58,6 +58,11 @@
         </createIndex>
     </changeSet>
 
-
+    <changeSet id="20250505-01-create-index-usermatchstates-groupid-sent" author="yourname">
+        <createIndex indexName="idx_usermatchstates_groupid_sent" tableName="user_match_states">
+            <column name="group_id"/>
+            <column name="sent_to_matching_service"/>
+        </createIndex>
+    </changeSet>
 
 </databaseChangeLog>

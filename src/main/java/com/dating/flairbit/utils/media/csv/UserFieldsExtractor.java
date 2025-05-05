@@ -10,10 +10,11 @@ import com.dating.flairbit.models.Profile;
 import com.dating.flairbit.models.User;
 import com.dating.flairbit.models.UserMatchState;
 import com.dating.flairbit.utils.basic.BasicUtility;
+import com.dating.flairbit.utils.basic.StringConcatUtil;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 
 
 
@@ -25,14 +26,18 @@ public final class UserFieldsExtractor {
         if (user.getProfiles() == null || user.getProfiles().isEmpty()) return List.of();
 
         return user.getProfiles().stream()
-                .filter(profile -> profile.getUserMatchState() != null && profile.getUserMatchState().isReadyForMatching())
+                .filter(profile -> !Objects.isNull(profile.getUserMatchState()) && profile.getUserMatchState().isReadyForMatching())
                 .map(profile -> new UserView(user, profile))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public static List<CsvExporter.FieldExtractor<UserView>> fieldExtractors() {
         return List.of(
-                field("reference_id", v -> BasicUtility.safeExtract(v.user().getUsername())),
+                field("reference_id", v -> {
+                    String username = BasicUtility.safeExtract(v.user().getUsername());
+                    String intent = BasicUtility.safeExtract(getMatchState(v), UserMatchState::getIntent);
+                    return StringConcatUtil.concatWithSeparator("_", username, intent.toLowerCase());
+                }),
                 field("name", v -> BasicUtility.safeExtract(v.profile(), Profile::getDisplayName)),
                 field("gender", v -> BasicUtility.safeExtract(getMatchState(v), UserMatchState::getGender)),
                 field("date_of_birth", v -> BasicUtility.safeExtract(getMatchState(v), UserMatchState::getDateOfBirth)),
@@ -45,8 +50,12 @@ public final class UserFieldsExtractor {
                 field("education", v -> BasicUtility.safeExtract(v.profile().getEducation(), Education::getFieldOfStudy)),
                 field("religion", v -> BasicUtility.safeExtract(v.profile().getLifestyle(), Lifestyle::getReligion)),
                 field("occupation", v -> BasicUtility.safeExtract(v.profile().getProfession(), Profession::getIndustry)),
-                field("preferred_gender", v -> BasicUtility.safeExtract(v.profile().getPreferences(),
-                        prefs -> prefs.getPreferredGenders() != null ? String.join(",", prefs.getPreferredGenders()) : "")),
+                field("preferred_gender", v -> {
+                    Preferences prefs = v.profile().getPreferences();
+                    return (prefs != null && prefs.getPreferredGenders() != null)
+                            ? String.join(",", prefs.getPreferredGenders())
+                            : "";
+                }),
                 field("preferred_min_age", v -> BasicUtility.safeExtract(v.profile().getPreferences(), Preferences::getPreferredMinAge)),
                 field("preferred_max_age", v -> BasicUtility.safeExtract(v.profile().getPreferences(), Preferences::getPreferredMaxAge)),
                 field("relationship_type", v -> BasicUtility.safeExtract(v.profile().getPreferences(), Preferences::getRelationshipType)),

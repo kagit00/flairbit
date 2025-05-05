@@ -1,6 +1,7 @@
 package com.dating.flairbit.utils.basic;
 
 import com.dating.flairbit.exceptions.BadRequestException;
+import com.dating.flairbit.models.User;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,6 +14,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
@@ -68,6 +70,14 @@ public final class BasicUtility {
         } else {
             return List.of();
         }
+    }
+
+    public static <T> List<List<T>> partitionList(List<T> items, int batchSize) {
+        List<List<T>> batches = new ArrayList<>();
+        for (int i = 0; i < items.size(); i += batchSize) {
+            batches.add(items.subList(i, Math.min(i + batchSize, items.size())));
+        }
+        return batches;
     }
 
     public static String safeExtract(Object obj) {
