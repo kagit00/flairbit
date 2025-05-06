@@ -6,30 +6,19 @@ import com.dating.flairbit.dto.db.UserExportDTO;
 import com.dating.flairbit.dto.enums.InteractionType;
 import com.dating.flairbit.dto.enums.JobStatus;
 import com.dating.flairbit.dto.enums.NodeType;
-import com.dating.flairbit.exceptions.BadRequestException;
-import com.dating.flairbit.exceptions.InternalServerErrorException;
 import com.dating.flairbit.models.*;
-import com.dating.flairbit.utils.basic.BasicUtility;
 import com.dating.flairbit.utils.basic.DefaultValuesPopulator;
+import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.*;
-import java.util.zip.GZIPOutputStream;
 
+@UtilityClass
 @Slf4j
 public final class RequestMakerUtility {
-    private static final long MAX_INPUT_SIZE = 500_000_000; // 500 MB
-    private static final long MAX_JSON_SIZE = 50_000_000; // 50 MB
-
-    private RequestMakerUtility() {
-        throw new UnsupportedOperationException("Unsupported operation");
-    }
 
     public static MatchSuggestionsImportJob createMatchSuggestionsImportJob(String groupId, JobStatus status, int total, int processed) {
         return MatchSuggestionsImportJob.builder()
@@ -57,45 +46,15 @@ public final class RequestMakerUtility {
                 log.error("Error transforming MatchSuggestion at index {}: {}", i, e.getMessage(), e);
             }
         }
-        log.info("{} valid MatchInfo out of {}", result.size(), responses.size());
+        log.info("{} valid Match Suggestions out of {}", result.size(), responses.size());
         return result;
     }
 
-    public static NodeExchange buildCostBasedNodes(String groupId, byte[] fileContent, String fileName, String contentType, UUID domainId) {
-        if (fileContent.length > MAX_INPUT_SIZE) {
-            throw new BadRequestException("Input fileContent too large: " + fileContent.length + " bytes");
-        }
-
-        byte[] compressedContent = compress(fileContent);
-        String base64Content = Base64.getEncoder().encodeToString(compressedContent);
-
-        NodeExchange message = NodeExchange.builder()
-                .groupId(groupId)
-                .fileContent(base64Content)
-                .fileName(fileName)
-                .contentType(contentType)
-                .domainId(domainId)
+    public static NodeExchange buildCostBasedNodes(String groupId, String filePath, String fileName, String contentType, UUID domainId) {
+        return NodeExchange.builder()
+                .groupId(groupId).filePath(filePath).fileName(fileName).contentType(contentType).domainId(domainId)
                 .build();
-
-        String json = BasicUtility.stringifyObject(message);
-        if (json.length() > MAX_JSON_SIZE) {
-            throw new IllegalStateException("Serialized NodeExportMessage too large: " + json.length() + " bytes");
-        }
-
-        return message;
     }
-
-    private static byte[] compress(byte[] data) {
-        try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-             GZIPOutputStream gzip = new GZIPOutputStream(byteArrayOutputStream)) {
-            gzip.write(data);
-            gzip.finish();
-            return byteArrayOutputStream.toByteArray();
-        } catch (IOException e) {
-            throw new InternalServerErrorException("Failed to compress data: " + e.getMessage());
-        }
-    }
-
 
     public static NodeExchange buildNonCostBasedNodesPayload(String groupId, List<String> usernames, UUID domainId) {
         return NodeExchange.builder()
@@ -145,48 +104,53 @@ public final class RequestMakerUtility {
 
     public static User buildUserFromUserExportDTO(UserExportDTO dto) {
         return User.builder()
-                .id(dto.getUserId())
-                .username(dto.getUsername())
+                .id(dto.userId())
+                .username(dto.username())
                 .build();
     }
 
     public static Profile buildProfileFromUserExportDto(UserExportDTO dto) {
         return Profile.builder()
-                .id(dto.getProfileId())
-                .displayName(dto.getDisplayName())
-                .bio(dto.getBio())
+                .id(dto.profileId())
+                .displayName(dto.displayName())
+                .bio(dto.bio())
                 .location(
                         Location.builder()
-                                .city(dto.getCity())
+                                .city(dto.city())
                                 .build()
                 ).lifestyle(
                         Lifestyle.builder()
-                                .smokes(dto.getSmokes())
-                                .drinks(dto.getDrinks())
-                                .religion(dto.getReligion())
+                                .smokes(dto.smokes())
+                                .drinks(dto.drinks())
+                                .religion(dto.religion())
                                 .build()
                 ).preferences(
                         Preferences.builder()
-                                .wantsKids(dto.getWantsKids())
-                                .preferredGenders(new HashSet<>(Arrays.asList(dto.getPreferredGenders().split(","))))
-                                .preferredMinAge(dto.getPreferredMinAge())
-                                .preferredMaxAge(dto.getPreferredMaxAge())
-                                .openToLongDistance(dto.getOpenToLongDistance())
+                                .wantsKids(dto.wantsKids())
+                                .preferredGenders(new HashSet<>(Arrays.asList(dto.preferredGenders().split(","))))
+                                .preferredMinAge(dto.preferredMinAge())
+                                .preferredMaxAge(dto.preferredMaxAge())
+                                .openToLongDistance(dto.openToLongDistance())
                                 .build()
                 ).education(
                         Education.builder()
-                                .fieldOfStudy(dto.getFieldOfStudy())
+                                .fieldOfStudy(dto.fieldOfStudy())
                                 .build()
                 ).profession(
                         Profession.builder()
-                                .industry(dto.getIndustry())
+                                .industry(dto.industry())
                                 .build()
                 ).userMatchState(UserMatchState.builder()
-                        .gender(dto.getGender())
-                        .dateOfBirth(dto.getDateOfBirth())
-                        .intent(dto.getIntent())
-                        .readyForMatching(dto.getReadyForMatching())
+                        .gender(dto.gender())
+                        .dateOfBirth(dto.dateOfBirth())
+                        .intent(dto.intent())
+                        .readyForMatching(dto.readyForMatching())
                         .build()
                 ).build();
     }
+
+    public static FileSystemMultipartFile fromPayload(MatchSuggestionsExchange payload) {
+        return new FileSystemMultipartFile(payload.getFilePath(), payload.getFileName(), payload.getContentType());
+    }
+
 }

@@ -1,6 +1,5 @@
 package com.dating.flairbit.repo;
 
-import com.dating.flairbit.dto.db.UserExportDTO;
 import com.dating.flairbit.models.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -52,16 +51,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Page<Object[]> findByGroupIdAndSentToMatchingServiceFalse(@Param("groupId") String groupId, Pageable pageable);
 
 
-    @Query("SELECT u FROM User u LEFT JOIN FETCH u.roles WHERE u.username = :username")
-    User findByUsernameWithRoles(String username);
-
     @Query("SELECT u.id FROM User u WHERE u.username IN :usernames")
     List<UUID> findIdsByUsernames(@Param("usernames") List<String> usernames);
-
-    @Query("SELECT u.email FROM User u")
-    List<String> findAllEmails();
-
-    @Query("SELECT u FROM User u LEFT JOIN FETCH u.profiles WHERE u.email = :email")
-    Optional<User> findByEmailFetchProfiles(@Param("email") String email);
 
 }

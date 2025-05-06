@@ -10,10 +10,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 
-/**
- * Utility class for creating response objects.
- * This class is not intended to be instantiated.
- */
 public final class ResponseMakerUtility {
 
     private ResponseMakerUtility() {
@@ -80,20 +76,6 @@ public final class ResponseMakerUtility {
                     .displayOrder(file.getDisplayOrder())
                     .uploadedAt(file.getUploadedAt())
                     .build();
-    }
-
-    public static Object generateObjResponse(Object type, String referenceId, Map<String, String> metadata, String groupId) {
-        Map<String, Object> response = new HashMap<>();
-
-        response.put("type", type);
-        response.put("group_id", groupId);
-        response.put("reference_id", referenceId);
-
-        if (metadata != null) {
-            response.putAll(metadata);
-        }
-
-        return response;
     }
 
     public static UserMatchStateDTO buildMatchState(UserMatchState userMatchState) {

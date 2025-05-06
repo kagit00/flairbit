@@ -116,15 +116,18 @@ public class User implements UserDetails, Serializable {
         return true;
     }
 
+    @JsonIgnore
     public boolean hasRole(String roleName) {
         return roles.stream()
                 .anyMatch(role -> role.getName().equalsIgnoreCase(roleName));
     }
 
+    @JsonIgnore
     public boolean isAdmin() {
         return hasRole("ADMIN");
     }
 
+    @JsonIgnore
     public boolean isUser() {
         return hasRole("USER");
     }

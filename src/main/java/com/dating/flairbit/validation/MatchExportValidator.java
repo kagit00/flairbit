@@ -1,13 +1,16 @@
 package com.dating.flairbit.validation;
 
+import com.dating.flairbit.dto.MatchSuggestionsExchange;
 import com.dating.flairbit.dto.NodeExchange;
+import lombok.experimental.UtilityClass;
 
+@UtilityClass
 public final class MatchExportValidator {
 
-    public static boolean isValidPayload(NodeExchange message) {
+    public static boolean isValidPayload(MatchSuggestionsExchange message) {
         return message != null
-                && message.getFileContent() != null
-                && !message.getFileContent().isBlank()
+                && message.getFilePath() != null
+                && !message.getFilePath().isBlank()
                 && message.getFileName() != null
                 && !message.getFileName().isBlank();
     }

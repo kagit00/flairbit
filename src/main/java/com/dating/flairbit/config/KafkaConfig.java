@@ -1,6 +1,7 @@
 package com.dating.flairbit.config;
 
 
+import com.dating.flairbit.exceptions.InternalServerErrorException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.InvalidTopicException;
@@ -72,8 +73,16 @@ public class KafkaConfig {
         backOff.setMultiplier(2.0);
         backOff.setMaxInterval(10000L);
 
-        var errorHandler = new DefaultErrorHandler(new DeadLetterPublishingRecoverer(kafkaTemplate(), (record, exception) -> new TopicPartition("schedule-x-dlq", -1)), backOff);
-        errorHandler.addNotRetryableExceptions(InvalidTopicException.class);
+        var errorHandler = new DefaultErrorHandler(
+                new DeadLetterPublishingRecoverer(kafkaTemplate(),
+                        (record, exception) -> new TopicPartition("schedule-x-dlq", record.partition())),
+                backOff
+        );
+        errorHandler.addNotRetryableExceptions(
+                InvalidTopicException.class,
+                InternalServerErrorException.class
+        );
+
         factory.setCommonErrorHandler(errorHandler);
 
         return factory;

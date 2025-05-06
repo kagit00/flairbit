@@ -1,6 +1,5 @@
 package com.dating.flairbit.dto;
 
-import com.dating.flairbit.dto.enums.NodeType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -11,14 +10,13 @@ import java.util.UUID;
 
 @Data
 @Builder
-@AllArgsConstructor
 @NoArgsConstructor
-public class NodeExchange {
+@AllArgsConstructor
+public class MatchSuggestionsExchange {
     private UUID domainId;
     private String groupId;
     private String filePath;
     private String fileName;
     private String contentType;
-    private NodeType type;
     private List<String> referenceIds;
 }

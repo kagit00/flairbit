@@ -17,14 +17,15 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.zip.GZIPInputStream;
 
 @Component
 @RequiredArgsConstructor
@@ -40,9 +41,8 @@ public class MatchSuggestionsImportJobProcessor {
     @Value("${domain-id}")
     private String domainId;
 
-    @Async
     @Transactional
-    public void processImportedMatchSuggestions(UUID jobId, MultipartFile file, String groupId, int batchSize) {
+    public void process(UUID jobId, MultipartFile file, String groupId, int batchSize) {
         try {
             log.info("Job {} started for groupId={}, file name={}, size={} bytes", jobId, groupId, file.getOriginalFilename(), file.getSize());
             matchSuggestionsImportJobRepository.updateStatus(jobId, JobStatus.PROCESSING);
@@ -51,23 +51,24 @@ public class MatchSuggestionsImportJobProcessor {
             List<String> success = new ArrayList<>();
             List<String> failed = new ArrayList<>();
 
-            CsvParser.parseInBatches(file.getInputStream(), matchSuggestionDTOResponseFactory, batch -> {
-                totalCounter.addAndGet(batch.size());
-                List<MatchSuggestion> matchSuggestions = RequestMakerUtility.convertResponsesToMatchSuggestions(batch, groupId);
-                if (matchSuggestions.isEmpty()) return;
+            try (InputStream gzipStream = new GZIPInputStream(file.getInputStream())) {
+                CsvParser.parseInBatches(gzipStream, matchSuggestionDTOResponseFactory, batch -> {
+                    totalCounter.addAndGet(batch.size());
+                    List<MatchSuggestion> matchSuggestions = RequestMakerUtility.convertResponsesToMatchSuggestions(batch, groupId);
+                    if (matchSuggestions.isEmpty()) return;
 
-                BatchUtils.processInBatches(matchSuggestions, batchSize, subBatch -> {
-                    try {
-                        matchSuggestionsStorageService.saveMatches(subBatch);
-                        subBatch.forEach(m -> success.add(m.getParticipantId()));
-                        matchSuggestionsImportJobRepository.incrementProcessed(jobId, subBatch.size());
-
-                    } catch (Exception e) {
-                        subBatch.forEach(m -> failed.add(m.getParticipantId()));
-                        log.warn("Sub-batch failed, skipping {} match: {}", subBatch.size(), e.getMessage());
-                    }
+                    BatchUtils.processInBatches(matchSuggestions, batchSize, subBatch -> {
+                        try {
+                            matchSuggestionsStorageService.saveMatches(subBatch);
+                            subBatch.forEach(m -> success.add(m.getParticipantId()));
+                            matchSuggestionsImportJobRepository.incrementProcessed(jobId, subBatch.size());
+                        } catch (Exception e) {
+                            subBatch.forEach(m -> failed.add(m.getParticipantId()));
+                            log.warn("Sub-batch failed, skipping {} match: {}", subBatch.size(), e.getMessage());
+                        }
+                    });
                 });
-            });
+            }
 
             int total = totalCounter.get();
             matchSuggestionsImportJobRepository.updateTotalRows(jobId, total);
@@ -83,6 +84,7 @@ public class MatchSuggestionsImportJobProcessor {
             handleUnexpectedFailure(jobId, groupId, e);
         }
     }
+
 
     private void completeJob(UUID jobId, String groupId, List<String> success, int total) {
         matchSuggestionsImportJobRepository.markCompleted(jobId);

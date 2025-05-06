@@ -1,5 +1,6 @@
 package com.dating.flairbit.processor;
 
+import com.dating.flairbit.dto.MatchSuggestionsExchange;
 import com.dating.flairbit.dto.NodesTransferJobExchange;
 import com.dating.flairbit.dto.NodeExchange;
 import com.dating.flairbit.dto.ReelInteractionDTO;
@@ -23,7 +24,7 @@ public class FlairBitPayloadProcessor {
     private final ReelInteractionProcessor reelInteractionProcessor;
 
     public void processImportedMatchesPayload(String payload) {
-        NodeExchange parsedPayload = BasicUtility.safeParse(payload, NodeExchange.class);
+        MatchSuggestionsExchange parsedPayload = BasicUtility.safeParse(payload, MatchSuggestionsExchange .class);
         if (Objects.isNull(parsedPayload)) return;
         importJobService.startMatchesImport(parsedPayload);
     }

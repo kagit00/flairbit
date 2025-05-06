@@ -1,7 +1,7 @@
 package com.dating.flairbit.service.importjob;
 
-import com.dating.flairbit.dto.NodeExchange;
+import com.dating.flairbit.dto.MatchSuggestionsExchange;
 
 public interface ImportJobService {
-    void startMatchesImport(NodeExchange payload);
+    void startMatchesImport(MatchSuggestionsExchange payload);
 }

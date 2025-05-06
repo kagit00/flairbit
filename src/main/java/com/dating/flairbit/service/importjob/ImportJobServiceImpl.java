@@ -1,6 +1,8 @@
 package com.dating.flairbit.service.importjob;
 
 import com.dating.flairbit.dto.BytesMultipartFile;
+import com.dating.flairbit.dto.FileSystemMultipartFile;
+import com.dating.flairbit.dto.MatchSuggestionsExchange;
 import com.dating.flairbit.dto.NodeExchange;
 import com.dating.flairbit.dto.enums.JobStatus;
 import com.dating.flairbit.exceptions.BadRequestException;
@@ -8,6 +10,7 @@ import com.dating.flairbit.exceptions.InternalServerErrorException;
 import com.dating.flairbit.models.MatchSuggestionsImportJob;
 import com.dating.flairbit.processor.MatchSuggestionsImportJobProcessor;
 import com.dating.flairbit.repo.MatchSuggestionsImportJobRepository;
+import com.dating.flairbit.service.match.MatchSuggestionsImportJobService;
 import com.dating.flairbit.utils.FileValidationUtility;
 import com.dating.flairbit.utils.basic.BasicUtility;
 import com.dating.flairbit.utils.request.RequestMakerUtility;
@@ -26,33 +29,29 @@ import java.util.UUID;
 public class ImportJobServiceImpl implements ImportJobService {
 
     private final MatchSuggestionsImportJobRepository matchSuggestionsImportJobRepository;
-    private final MatchSuggestionsImportJobProcessor matchSuggestionsImportJobProcessor;
-    private static final int BATCH_SIZE = 1000;
+    private final MatchSuggestionsImportJobService matchSuggestionsImportJobService;
+    private static final int BATCH_SIZE = 10000;
 
 
     @Override
     @Transactional
-    public void startMatchesImport(NodeExchange payload) {
+    public void startMatchesImport(MatchSuggestionsExchange payload) {
         if (!MatchExportValidator.isValidPayload(payload)) throw new BadRequestException("Not valid payload for matches export");
 
         try {
             UUID jobId = initiateNodesImport(payload);
-            log.info("Received file for group '{}': name={}", payload.getGroupId(), payload.getFileName());
-            MultipartFile file = new BytesMultipartFile(
-                    payload.getFileName(),
-                    payload.getContentType(),
-                    BasicUtility.parseFileContent(payload.getFileContent())
-            );
+            log.info("Received file for group '{}': name={} path={}", payload.getGroupId(), payload.getFileName(), payload.getFilePath());
+            MultipartFile file = RequestMakerUtility.fromPayload(payload);
 
             FileValidationUtility.validateInput(file, payload.getGroupId());
-            matchSuggestionsImportJobProcessor.processImportedMatchSuggestions(jobId, file, payload.getGroupId(), BATCH_SIZE);
+            matchSuggestionsImportJobService.processImportedMatchSuggestions(jobId, file, payload.getGroupId(), BATCH_SIZE);
 
         } catch (Exception e) {
             throw new InternalServerErrorException(e.getMessage());
         }
     }
 
-    private UUID initiateNodesImport(NodeExchange payload) {
+    private UUID initiateNodesImport(MatchSuggestionsExchange  payload) {
         MatchSuggestionsImportJob job = RequestMakerUtility.createMatchSuggestionsImportJob(
                 payload.getGroupId(),
                 JobStatus.PENDING,

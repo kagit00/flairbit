@@ -20,7 +20,7 @@ public class FlairBitConsumer {
     private final FlairBitPayloadProcessor flairBitPayloadProcessor;
 
     @KafkaListener(
-            topics = "${kafka.topics.flairbit.matches:flairbit-match-suggestions}",
+            topics = "${kafka.topics.flairbit.matches:flairbit-match-suggestions_}",
             groupId = "${spring.kafka.consumer.group-id:flairbit-consumer-group}",
             containerFactory = "kafkaListenerContainerFactory",
             concurrency = "4"

@@ -1,25 +1,26 @@
-package com.dating.flairbit.processor;
+package com.dating.flairbit.service.user;
 
 
-import com.dating.flairbit.service.user.UsersExportService;
+import com.dating.flairbit.processor.UsersExprtProcessor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
+
 import java.util.UUID;
 
 
-@Component
+@Service
 @RequiredArgsConstructor
 @Slf4j
-public class UsersExportProceessor {
-    private final UsersExportService usersExportService;
+public class UsersExportService {
+    private final UsersExprtProcessor usersExprtProcessor;
 
     @Async("usersDumpExecutor")
     public void processGroup(String groupId, String groupType, UUID domainId) {
         log.info("Processing export for group: {} (type: {})", groupId, groupType);
         try {
-            usersExportService.processGroup(groupId, groupType, domainId);
+            usersExprtProcessor.processGroup(groupId, groupType, domainId);
         } catch (Exception e) {
             log.error("Export failed for group '{}', type '{}':", groupId, groupType, e);
         }

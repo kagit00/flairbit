@@ -3,7 +3,7 @@ package com.dating.flairbit.scheduler;
 
 import com.dating.flairbit.exceptions.BadRequestException;
 import com.dating.flairbit.models.MatchingGroupConfig;
-import com.dating.flairbit.processor.UsersExportProceessor;
+import com.dating.flairbit.service.user.UsersExportService;
 import com.dating.flairbit.repo.MatchingGroupConfigRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +24,7 @@ import java.util.*;
 public class UsersExportScheduler {
 
     private final MatchingGroupConfigRepository groupConfigRepository;
-    private final UsersExportProceessor usersExportProceessor;
+    private final UsersExportService usersExportService;
 
     @Value("${domain-id}")
     private String domainId;
@@ -39,12 +39,11 @@ public class UsersExportScheduler {
     }
 
     @Scheduled(cron = "${export.cron-schedule}")
-    @Transactional
     public void scheduledExportJob() {
         List<MatchingGroupConfig> groupConfigs = groupConfigRepository.findAll();
         log.info("Starting export for active groups: {}", groupConfigs);
         groupConfigs.forEach(
-                config -> usersExportProceessor.processGroup(config.getId(), config.getType(), UUID.fromString(domainId))
+                config -> usersExportService.processGroup(config.getId(), config.getType(), UUID.fromString(domainId))
         );
     }
 }
