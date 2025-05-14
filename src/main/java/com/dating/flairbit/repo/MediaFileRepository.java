@@ -47,13 +47,8 @@ public interface MediaFileRepository extends JpaRepository<MediaFile, UUID> {
 
 
     @Query(value = """
-    SELECT mf.* FROM media_files mf
-    JOIN profiles p ON mf.profile_id = p.id
-    JOIN users u ON p.user_id = u.id
-    WHERE u.username IN (:usernames)
-    AND mf.uploaded_at < :cursor
-    ORDER BY mf.uploaded_at DESC
-    LIMIT :limit
+    SELECT mf.* FROM media_files mf JOIN profiles p ON mf.profile_id = p.id JOIN users u ON p.user_id = u.id
+    WHERE u.username IN (:usernames) AND mf.uploaded_at < :cursor ORDER BY mf.uploaded_at DESC LIMIT :limit
     """, nativeQuery = true)
     List<MediaFile> findMediaFilesByUsernames(
             @Param("usernames") List<String> usernames,

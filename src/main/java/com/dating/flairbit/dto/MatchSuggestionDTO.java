@@ -14,4 +14,5 @@ public class MatchSuggestionDTO {
     private String participantId;
     private String matchedParticipantId;
     private Double compatibilityScore;
+    private String matchSuggestionType;
 }

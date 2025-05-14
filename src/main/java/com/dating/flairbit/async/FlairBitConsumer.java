@@ -1,8 +1,6 @@
 package com.dating.flairbit.async;
 
-import com.dating.flairbit.processor.FlairBitPayloadProcessor;
-import com.dating.flairbit.validation.GenericValidationUtility;
-import lombok.RequiredArgsConstructor;
+import com.dating.flairbit.async.consumers.BaseKafkaConsumer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -12,54 +10,42 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
-public class FlairBitConsumer {
+public class FlairBitConsumer extends BaseKafkaConsumer {
 
-    private static final String USERS_TRANSFER_JOB_STATUS_TOPIC = "flairbit-users-transfer-job-status-retrieval";
-    private static final String REEL_INTERACTION_RECORD_TOPIC = "reel-interaction-record";
-    private final FlairBitPayloadProcessor flairBitPayloadProcessor;
-
-    @KafkaListener(
-            topics = "${kafka.topics.flairbit.matches:flairbit-match-suggestions_}",
-            groupId = "${spring.kafka.consumer.group-id:flairbit-consumer-group}",
-            containerFactory = "kafkaListenerContainerFactory",
-            concurrency = "4"
-    )
-    @Transactional
-    public  void consumeImportedMatches(ConsumerRecord<String, String> consumerRecord) {
-        try {
-            GenericValidationUtility.validatePayload(consumerRecord);
-            String payload = consumerRecord.value();
-            flairBitPayloadProcessor.processImportedMatchesPayload(payload);
-
-        } catch (Exception e) {
-            log.error("Failed to process match: error={}", e.getMessage(), e);
-        }
+    public FlairBitConsumer(FlairBitProducer dlqProducer) {
+        super(dlqProducer);
     }
 
     @KafkaListener(
-            topics = USERS_TRANSFER_JOB_STATUS_TOPIC,
-            groupId = "${spring.kafka.consumer.group-id:flairbit-consumer-group}",
-            containerFactory = "kafkaListenerContainerFactory",
-            concurrency = "2"
+            topicPattern = "#{@usersTransferJobStatusConfig.topicPattern}",
+            groupId = "#{@usersTransferJobStatusConfig.groupId}",
+            concurrency = "#{@usersTransferJobStatusConfig.concurrency}",
+            containerFactory = "kafkaListenerContainerFactory"
     )
-    @Transactional
-    public void consumeUsersTransferJobStatus(ConsumerRecord<String, String> consumerRecord) {
-        GenericValidationUtility.validatePayload(consumerRecord);
-        String payload = consumerRecord.value();
-        flairBitPayloadProcessor.processUsersTransferJobStatusPayload(payload);
+    public void consumeUsersExportStatus(ConsumerRecord<String, String> consumerRecord) {
+        consume(consumerRecord, getListenerConfigs().get(0));
+    }
+
+
+    @KafkaListener(
+            topicPattern = "#{@matchSuggestionsImportConfig.topicPattern}",
+            groupId = "#{@matchSuggestionsImportConfig.groupId}",
+            concurrency = "#{@matchSuggestionsImportConfig.concurrency}",
+            containerFactory = "kafkaListenerContainerFactory"
+    )
+    public void consumeMachSuggestions(ConsumerRecord<String, String> consumerRecord) {
+        consume(consumerRecord, getListenerConfigs().get(1));
     }
 
     @KafkaListener(
-            topics = REEL_INTERACTION_RECORD_TOPIC,
-            groupId = "${spring.kafka.consumer.group-id:flairbit-consumer-group}",
-            containerFactory = "kafkaListenerContainerFactory",
-            concurrency = "3"
+            topicPattern = "#{@matchSuggestionsImportConfig.topicPattern}",
+            groupId = "#{@matchSuggestionsImportConfig.groupId}",
+            concurrency = "#{@matchSuggestionsImportConfig.concurrency}",
+            containerFactory = "kafkaListenerContainerFactory"
     )
     @Transactional
     public void recordReelInteraction(ConsumerRecord<String, String> consumerRecord) {
-        GenericValidationUtility.validatePayload(consumerRecord);
-        String payload = consumerRecord.value();
-        flairBitPayloadProcessor.processReelInteractionPayload(payload);
+        consume(consumerRecord, getListenerConfigs().get(2));
     }
 }
+

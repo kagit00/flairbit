@@ -12,9 +12,9 @@ import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
-
 import java.time.LocalDate;
 import java.util.*;
+
 
 @UtilityClass
 @Slf4j
@@ -32,12 +32,14 @@ public final class RequestMakerUtility {
         List<MatchSuggestion> result = new ArrayList<>();
         for (int i = 0; i < responses.size(); i++) {
             MatchSuggestionDTO res = responses.get(i);
+
             try {
                 MatchSuggestion matchSuggestion = MatchSuggestion.builder()
                         .groupId(groupId)
                         .participantId(res.getParticipantId())
                         .matchedParticipantId(res.getMatchedParticipantId())
                         .compatibilityScore(res.getCompatibilityScore())
+                        .matchSuggestionType(res.getMatchSuggestionType())
                         .build();
 
                 matchSuggestion.setCreatedAt(DefaultValuesPopulator.getCurrentTimestamp());
@@ -89,8 +91,8 @@ public final class RequestMakerUtility {
                 .build();
     }
 
-    public static Page<UserExportDTO> transformToUserExportDTO(Page<Object[]> results) {
-        List<UserExportDTO> dtos = results.getContent().stream().map(result ->
+    public static List<UserExportDTO> transformToUserExportDTO(List<Object[]> results) {
+        return results.stream().map(result ->
                 new UserExportDTO((UUID) result[0], (String) result[1], (UUID) result[2], (String) result[3], (String) result[4],
                         (String) result[5], (Boolean) result[6], (Boolean) result[7], (String) result[8], (Boolean) result[9],
                         (String) result[10], (Integer) result[11], (Integer) result[12], (String) result[13], (Boolean) result[14],
@@ -98,8 +100,6 @@ public final class RequestMakerUtility {
                         (Boolean) result[20], (String) result[21]
                 )
         ).toList();
-
-        return new PageImpl<>(dtos, results.getPageable(), results.getTotalElements());
     }
 
     public static User buildUserFromUserExportDTO(UserExportDTO dto) {

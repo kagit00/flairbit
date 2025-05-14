@@ -2,55 +2,206 @@
         xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
-                            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+                        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
 
-    <changeSet id="match-table-01" author="gsss">
+    <!-- Step 1: Rename existing table to preserve data -->
+    <changeSet id="rename-old-match-suggestions" author="gsss">
         <preConditions onFail="MARK_RAN">
-            <tableExists tableName="matches"/>
+            <tableExists tableName="match_suggestions"/>
         </preConditions>
-        <dropTable tableName="matches"/>
+        <renameTable
+                oldTableName="match_suggestions"
+                newTableName="match_suggestions_old"/>
     </changeSet>
 
-    <changeSet id="match-table-02" author="gsss">
-        <createTable tableName="matches">
+    <!-- Step 2: Create partitioned match_suggestions table -->
+    <changeSet id="create-partitioned-match-suggestions" author="gsss">
+        <sql>
+            <![CDATA[
+                CREATE TABLE match_suggestions (
+                    id UUID NOT NULL,
+                    group_id VARCHAR(255) NOT NULL,
+                    participant_id VARCHAR(255) NOT NULL,
+                    matched_participant_id VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP,
+                    compatibility_score DOUBLE PRECISION NOT NULL,
+                    PRIMARY KEY (id, group_id)
+                ) PARTITION BY LIST (group_id);
+            ]]>
+        </sql>
+    </changeSet>
+
+    <!-- Step 3: Create default partition -->
+    <changeSet id="create-default-partition" author="gsss">
+        <sql>
+            <![CDATA[
+                CREATE TABLE match_suggestions_default
+                PARTITION OF match_suggestions DEFAULT;
+            ]]>
+        </sql>
+    </changeSet>
+
+    <!-- Step 4: Dynamically create partitions from group_config -->
+    <changeSet id="create-group-config-partitions" author="gsss">
+        <sql splitStatements="false">
+            <![CDATA[
+                DO $$
+                DECLARE
+                    group_id_record RECORD;
+                BEGIN
+                    FOR group_id_record IN (SELECT DISTINCT id FROM group_config)
+                    LOOP
+                        EXECUTE format(
+                            'CREATE TABLE match_suggestions_%I PARTITION OF match_suggestions FOR VALUES IN (%L)',
+                            replace(group_id_record.id, '-', '_'),
+                            group_id_record.id
+                        );
+                    END LOOP;
+                END $$;
+            ]]>
+        </sql>
+    </changeSet>
+
+    <!-- Step 5: Create new_group_ids table for future group_id values -->
+    <changeSet id="create-new-group-ids-table" author="gsss">
+        <sql>
+            <![CDATA[
+                CREATE TABLE new_group_ids (
+                    group_id VARCHAR(255) PRIMARY KEY,
+                    created_at TIMESTAMP DEFAULT now()
+                );
+            ]]>
+        </sql>
+    </changeSet>
+
+    <!-- Step 6: Create trigger to log new group_id values -->
+    <changeSet id="create-log-group-id-trigger" author="gsss">
+        <sql splitStatements="false">
+            <![CDATA[
+                CREATE OR REPLACE FUNCTION log_new_group_id()
+                RETURNS TRIGGER AS $$
+                DECLARE
+                    group_id_exists BOOLEAN;
+                BEGIN
+                    SELECT EXISTS (
+                        SELECT 1 FROM group_config WHERE id = NEW.group_id
+                    ) INTO group_id_exists;
+
+                    IF NOT group_id_exists THEN
+                        INSERT INTO new_group_ids (group_id)
+                        VALUES (NEW.group_id)
+                        ON CONFLICT DO NOTHING;
+                    END IF;
+
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+
+                CREATE TRIGGER log_group_id_trigger
+                BEFORE INSERT ON match_suggestions
+                FOR EACH ROW
+                EXECUTE FUNCTION log_new_group_id();
+            ]]>
+        </sql>
+    </changeSet>
+
+    <!-- Step 7: Migrate data in batches -->
+    <changeSet id="migrate-data-match-suggestions" author="gsss">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="match_suggestions_old"/>
+        </preConditions>
+        <sql splitStatements="false">
+            <![CDATA[
+                DO $$
+                DECLARE
+                    batch_size INTEGER := 10000;
+                    total_rows INTEGER;
+                    current_offset INTEGER := 0;
+                BEGIN
+                    SELECT count(*) INTO total_rows FROM match_suggestions_old;
+                    WHILE current_offset < total_rows LOOP
+                        INSERT INTO match_suggestions
+                        SELECT * FROM match_suggestions_old
+                        ORDER BY id
+                        LIMIT batch_size OFFSET current_offset;
+                        current_offset := current_offset + batch_size;
+                        COMMIT;
+                    END LOOP;
+                END $$;
+            ]]>
+        </sql>
+    </changeSet>
+
+    <!-- Step 8: Drop old table -->
+    <changeSet id="drop-old-match-suggestions" author="gsss">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="match_suggestions_old"/>
+        </preConditions>
+        <dropTable tableName="match_suggestions_old"/>
+    </changeSet>
+
+    <!-- Step 9: Add unique constraint -->
+    <changeSet id="add-unique-constraint" author="gsss">
+        <addUniqueConstraint
+                tableName="match_suggestions"
+                constraintName="unique_match"
+                columnNames="participant_id,matched_participant_id,group_id"/>
+    </changeSet>
+
+    <!-- Step 10: Recreate match_suggestions_import_jobs -->
+    <changeSet id="recreate-match-suggestions-import-jobs" author="gsss">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="match_suggestions_import_jobs"/>
+            </not>
+        </preConditions>
+        <createTable tableName="match_suggestions_import_jobs">
             <column name="id" type="UUID">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
-            <column name="group_id" type="VARCHAR(255)">
-                <constraints nullable="false"/>
-            </column>
-            <column name="participant_id" type="VARCHAR(255)">
-                <constraints nullable="false"/>
-            </column>
-            <column name="matched_participant_id" type="VARCHAR(255)">
-                <constraints nullable="false"/>
-            </column>
-            <column name="created_at" type="TIMESTAMP"/>
-            <column name="compatibility_score" type="DOUBLE PRECISION">
-                <constraints nullable="false"/>
-            </column>
+            <column name="group_id" type="VARCHAR(255)"/>
+            <column name="status" type="VARCHAR(255)"/>
+            <column name="total_rows" type="INT"/>
+            <column name="processed_rows" type="INT"/>
+            <column name="error_message" type="TEXT"/>
+            <column name="started_at" type="TIMESTAMP"/>
+            <column name="ended_at" type="TIMESTAMP"/>
+            <column name="completed_at" type="TIMESTAMP"/>
         </createTable>
+    </changeSet>
 
-        <createIndex indexName="idx_matches_group_id" tableName="matches">
+    <changeSet id="add-match-suggestion-type-and-indexes" author="gsss">
+
+        <addColumn tableName="match_suggestions">
+            <column name="match_suggestion_type" type="VARCHAR(255)"/>
+        </addColumn>
+
+        <dropUniqueConstraint
+                tableName="match_suggestions"
+                constraintName="unique_match"/>
+
+        <addUniqueConstraint
+                tableName="match_suggestions"
+                constraintName="unique_match"
+                columnNames="participant_id, matched_participant_id, group_id, match_suggestion_type"/>
+
+        <createIndex indexName="idx_match_suggestions_group_type"
+                     tableName="match_suggestions">
             <column name="group_id"/>
+            <column name="match_suggestion_type"/>
         </createIndex>
 
-        <createIndex indexName="idx_matches_participant_id" tableName="matches">
+        <createIndex indexName="idx_match_suggestions_participant"
+                     tableName="match_suggestions">
             <column name="participant_id"/>
         </createIndex>
+
+        <createIndex indexName="idx_match_suggestions_matched"
+                     tableName="match_suggestions">
+            <column name="matched_participant_id"/>
+        </createIndex>
+
     </changeSet>
 
-    <changeSet id="graph-59-rename-table" author="gsss">
-        <renameTable oldTableName="export_jobs" newTableName="matches_import_jobs"/>
-    </changeSet>
-
-    <changeSet id="graph-60-rename-table" author="gsss">
-        <renameTable oldTableName="matches_import_jobs" newTableName="match_suggestions_import_jobs"/>
-    </changeSet>
-
-
-    <changeSet id="graph-61-rename-table" author="gsss">
-        <renameTable oldTableName="matches" newTableName="match_suggestions"/>
-    </changeSet>
 
 </databaseChangeLog>

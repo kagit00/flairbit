@@ -5,6 +5,7 @@
             http://www.liquibase.org/xml/ns/dbchangelog
             http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
 
+    <include file="group-configs.xml" relativeToChangelogFile="true"/>
     <include file="roles.xml" relativeToChangelogFile="true"/>
     <include file="users.xml" relativeToChangelogFile="true"/>
     <include file="profiles.xml" relativeToChangelogFile="true"/>
@@ -21,6 +22,4 @@
     <include file="match-suggestions.xml" relativeToChangelogFile="true"/>
     <include file="match_requests.xml" relativeToChangelogFile="true"/>
     <include file="optimizations.xml" relativeToChangelogFile="true"/>
-    <include file="group-configs.xml" relativeToChangelogFile="true"/>
-
 </databaseChangeLog>

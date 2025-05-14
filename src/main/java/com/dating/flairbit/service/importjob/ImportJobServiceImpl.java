@@ -30,19 +30,17 @@ public class ImportJobServiceImpl implements ImportJobService {
 
     private final MatchSuggestionsImportJobRepository matchSuggestionsImportJobRepository;
     private final MatchSuggestionsImportJobService matchSuggestionsImportJobService;
-    private static final int BATCH_SIZE = 10000;
+    private static final int BATCH_SIZE = 5000;
 
 
     @Override
     @Transactional
     public void startMatchesImport(MatchSuggestionsExchange payload) {
         if (!MatchExportValidator.isValidPayload(payload)) throw new BadRequestException("Not valid payload for matches export");
-
         try {
             UUID jobId = initiateNodesImport(payload);
             log.info("Received file for group '{}': name={} path={}", payload.getGroupId(), payload.getFileName(), payload.getFilePath());
             MultipartFile file = RequestMakerUtility.fromPayload(payload);
-
             FileValidationUtility.validateInput(file, payload.getGroupId());
             matchSuggestionsImportJobService.processImportedMatchSuggestions(jobId, file, payload.getGroupId(), BATCH_SIZE);
 

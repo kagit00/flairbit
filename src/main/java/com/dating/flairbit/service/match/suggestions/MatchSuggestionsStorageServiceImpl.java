@@ -7,7 +7,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 
 @Slf4j
@@ -17,13 +22,25 @@ public class MatchSuggestionsStorageServiceImpl implements MatchSuggestionsStora
     private final MatchSuggestionsRepository matchSuggestionsRepository;
 
     @Override
-    public void saveMatches(List<MatchSuggestion> matchSuggestions) {
-        matchSuggestionsRepository.saveAll(matchSuggestions);
+    @Transactional
+    public void saveMatchSuggestions(List<MatchSuggestion> matchSuggestions) {
+        List<MatchSuggestion> deduplicated = matchSuggestions.stream()
+                .collect(Collectors.collectingAndThen(
+                        Collectors.toMap(
+                                m -> m.getParticipantId() + "|" + m.getMatchedParticipantId() + "|" + m.getGroupId() + "|" + m.getMatchSuggestionType(),
+                                Function.identity(),
+                                (existing, duplicate) -> existing
+                        ),
+                        map -> new ArrayList<>(map.values())
+                ));
+
+        matchSuggestionsRepository.saveAll(deduplicated);
     }
 
     @Override
-    @Cacheable(value = "matchSuggestionsCache", key = "#participantUsername" + "_matches")
-    public List<MatchSuggestion>  retrieveByParticipantIdAndGroupId(String participantUsername, String groupId) {
-        return matchSuggestionsRepository.findByParticipantIdAndGroupId(participantUsername, groupId);
+    @Cacheable(value = "matchSuggestionsCache", key = "#participantUsername" + "_matches_" + "#groupId")
+    @Transactional(readOnly = true)
+    public List<MatchSuggestion> retrieveMatchSuggestions(String participantUsername, String groupId) {
+        return matchSuggestionsRepository.findFilteredSuggestions(participantUsername, groupId);
     }
 }

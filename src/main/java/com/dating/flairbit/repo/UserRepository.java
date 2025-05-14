@@ -20,7 +20,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmail(String email);
 
     @Query(value = """
-    SELECT 
+    SELECT
         u.id AS userId, u.username AS username, p.id AS profileId, p.display_name AS displayName, 
         p.bio AS bio, l.city AS city, ls.smokes AS smokes, ls.drinks AS drinks,
         ls.religion AS religion, pr.wants_kids AS wantsKids, 
@@ -38,18 +38,17 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     LEFT JOIN preferences pr ON pr.profile_id = p.id
     LEFT JOIN educations e ON e.profile_id = p.id
     LEFT JOIN professions pro ON pro.profile_id = p.id
-    WHERE ms.group_id = :groupId AND ms.sent_to_matching_service = false
+    WHERE ms.group_id = :groupId AND ms.sent_to_matching_service = false AND ms.ready_for_matching = true
     """,
             countQuery = """
         SELECT COUNT(*)
         FROM user_match_states ms
         JOIN profiles p ON ms.profile_id = p.id
-        WHERE ms.group_id = :groupId AND ms.sent_to_matching_service = false
+        WHERE ms.group_id = :groupId AND ms.sent_to_matching_service = false AND ms.ready_for_matching = true
     """,
             nativeQuery = true
     )
-    Page<Object[]> findByGroupIdAndSentToMatchingServiceFalse(@Param("groupId") String groupId, Pageable pageable);
-
+    List<Object[]> findByGroupIdAndSentToMatchingServiceFalse(@Param("groupId") String groupId);
 
     @Query("SELECT u.id FROM User u WHERE u.username IN :usernames")
     List<UUID> findIdsByUsernames(@Param("usernames") List<String> usernames);

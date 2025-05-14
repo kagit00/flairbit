@@ -43,18 +43,6 @@
             <column name="active" valueBoolean="true"/>
             <column name="intent" value="MARRIAGE"/>
         </insert>
-        <insert tableName="group_config">
-            <column name="id" value="bff-default"/>
-            <column name="type" value="NON_COST_BASED"/>
-            <column name="active" valueBoolean="true"/>
-            <column name="intent" value="BFF"/>
-        </insert>
-        <insert tableName="group_config">
-            <column name="id" value="random-interact-default"/>
-            <column name="type" value="NON_COST_BASED"/>
-            <column name="active" valueBoolean="true"/>
-            <column name="intent" value="RANDOM_CHAT_CALL"/>
-        </insert>
     </changeSet>
 
 </databaseChangeLog>

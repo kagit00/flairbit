@@ -26,4 +26,6 @@ public class MatchSuggestion {
     private LocalDateTime createdAt;
     @Column(nullable = false)
     private Double compatibilityScore;
+    @Column(nullable = false)
+    private String matchSuggestionType;
 }

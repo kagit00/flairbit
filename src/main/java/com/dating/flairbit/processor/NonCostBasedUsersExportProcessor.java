@@ -15,33 +15,47 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
-@Slf4j
 public class NonCostBasedUsersExportProcessor {
     private final UsersExportFormattingService userExportService;
     private final FlairBitProducer flairBitProducer;
     private static final String USERS_EXPORT = "flairbit-users";
 
-    @Transactional
-    public void processGroup(String groupId, List<List<UserExportDTO>> batches, UUID domainId) {
-        for (int i = 0; i < batches.size(); i++) {
-            List<UserExportDTO> batch = batches.get(i);
-            List<String> refIds = userExportService.extractEligibleUsernames(batch, groupId);
-
-            if (refIds.isEmpty()) {
-                log.info("No matching profiles for non-cost-based group '{}', batch {}", groupId, i);
-                continue;
-            }
-
-            NodeExchange payload = RequestMakerUtility.buildNonCostBasedNodesPayload(groupId, refIds, domainId);
-            flairBitProducer.sendMessage(
-                    USERS_EXPORT,
-                    StringConcatUtil.concatWithSeparator("-", domainId.toString(), groupId),
-                    BasicUtility.stringifyObject(payload)
-            );
-            log.info("Sent {} users for non-cost-based group '{}', batch {}", refIds.size(), groupId, i);
+    public CompletableFuture<Void> processBatch(String groupId, List<UserExportDTO> batch, UUID domainId) {
+        if (isEmptyBatch(batch)) {
+            log.info("Empty batch for group '{}'. Skipping export.", groupId);
+            return CompletableFuture.completedFuture(null);
         }
+
+        return CompletableFuture.supplyAsync(() -> userExportService.extractEligibleUsernames(batch, groupId))
+                .thenCompose(refIds -> {
+                    if (refIds.isEmpty()) {
+                        log.info("No matching profiles for non-cost-based group '{}'", groupId);
+                        return CompletableFuture.completedFuture(null);
+                    }
+
+                    NodeExchange payload = RequestMakerUtility.buildNonCostBasedNodesPayload(groupId, refIds, domainId);
+                    flairBitProducer.sendMessage(
+                            USERS_EXPORT,
+                            StringConcatUtil.concatWithSeparator("-", domainId.toString(), groupId),
+                            BasicUtility.stringifyObject(payload)
+                    );
+                    log.info("Sent {} users for non-cost-based group '{}'", refIds.size(), groupId);
+                    return CompletableFuture.completedFuture(null);
+                })
+                .handle((result, throwable) -> {
+                    if (throwable != null) {
+                        log.error("Failed to process batch for group '{}': {}", groupId, throwable.getMessage(), throwable);
+                    }
+                    return null;
+                });
+    }
+
+    private boolean isEmptyBatch(List<UserExportDTO> batch) {
+        return batch == null || batch.isEmpty();
     }
 }

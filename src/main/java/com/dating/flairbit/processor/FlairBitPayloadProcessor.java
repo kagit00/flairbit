@@ -13,6 +13,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Component
@@ -23,22 +24,71 @@ public class FlairBitPayloadProcessor {
     private final UsersExportJobStatusProcessor usersExportJobStatusProcessor;
     private final ReelInteractionProcessor reelInteractionProcessor;
 
-    public void processImportedMatchesPayload(String payload) {
-        MatchSuggestionsExchange parsedPayload = BasicUtility.safeParse(payload, MatchSuggestionsExchange .class);
-        if (Objects.isNull(parsedPayload)) return;
-        importJobService.startMatchesImport(parsedPayload);
+    public CompletableFuture<Void> processImportedMatchSuggestionsPayload(String payload) {
+        if (payload == null || payload.isBlank()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return CompletableFuture.supplyAsync(() -> {
+            MatchSuggestionsExchange parsedPayload = BasicUtility.safeParse(payload, MatchSuggestionsExchange.class);
+            if (parsedPayload == null) {
+                log.warn("Failed to parse imported matches payload: {}", payload);
+                return null;
+            }
+
+            importJobService.startMatchesImport(parsedPayload);
+            return null;
+        }).handle((result, throwable) -> {
+            if (throwable != null) {
+                log.error("Failed to process imported matches payload", throwable);
+            }
+            return null;
+        });
     }
 
-    public void processUsersTransferJobStatusPayload(String payload) {
-        NodesTransferJobExchange job = BasicUtility.safeParse(payload, NodesTransferJobExchange.class);
-        if (Objects.isNull(job)) return;
-        usersExportJobStatusProcessor.processJobStatus(job);
+    public CompletableFuture<Void> processUsersTransferJobStatusPayload(String payload) {
+        if (payload == null || payload.isBlank()) {
+            log.warn("Null or empty user transfer job status payload");
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return CompletableFuture.supplyAsync(() -> {
+            NodesTransferJobExchange job = BasicUtility.safeParse(payload, NodesTransferJobExchange.class);
+            if (job == null) {
+                log.warn("Failed to parse users transfer job status payload: {}", payload);
+                return null;
+            }
+
+            usersExportJobStatusProcessor.processJobStatus(job);
+            return null;
+        }).handle((result, throwable) -> {
+            if (throwable != null) {
+                log.error("Failed to process users transfer job status payload:", throwable);
+            }
+            return null;
+        });
     }
 
-    @Async
-    public void processReelInteractionPayload(String payload) {
-        ReelInteractionDTO reelInteraction = BasicUtility.safeParse(payload, ReelInteractionDTO.class);
-        if (Objects.isNull(reelInteraction)) return;
-        reelInteractionProcessor.processReelInteractionRecording(reelInteraction);
+    public CompletableFuture<Void> processReelInteractionPayload(String payload) {
+        if (payload == null || payload.isBlank()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return CompletableFuture.supplyAsync(() -> {
+            ReelInteractionDTO reelInteraction = BasicUtility.safeParse(payload, ReelInteractionDTO.class);
+            if (reelInteraction == null) {
+                log.warn("Failed to parse reel interaction payload: {}", payload);
+                return null;
+            }
+
+            reelInteractionProcessor.processReelInteractionRecording(reelInteraction);
+            return null;
+        }).handle((result, throwable) -> {
+            if (throwable != null) {
+                log.error("Failed to process reel interaction payload: {}", payload, throwable);
+            }
+            return null;
+        });
     }
 }
+

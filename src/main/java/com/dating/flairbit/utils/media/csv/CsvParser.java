@@ -17,7 +17,7 @@ import java.util.function.Consumer;
 
 @Slf4j
 public final class CsvParser {
-    private static final int BATCH_SIZE = 1000;
+    private static final int BATCH_SIZE = 50000;
 
     private CsvParser() {
         throw new UnsupportedOperationException("Unsupported");
@@ -142,7 +142,6 @@ public final class CsvParser {
                 metadata.put(header, value);
             }
         }
-
         return specialFields;
     }
 

@@ -35,8 +35,8 @@ public class TestDataSeeder implements ApplicationListener<ApplicationReadyEvent
     private final PreferencesUpdateService preferencesService;
     private final ProfessionUpdateService professionService;
 
-    private static final int BATCH_SIZE = 1000;
-    private static final int TOTAL_USERS = 1000;
+    private static final int BATCH_SIZE = 10000;
+    private static final int TOTAL_USERS = 100000;
     private static final List<String> RELIGIONS = List.of(
             "Christianity", "Islam", "Hinduism", "Buddhism", "Judaism",
             "Sikhism", "Atheism", "Agnosticism", "Other"
@@ -46,15 +46,13 @@ public class TestDataSeeder implements ApplicationListener<ApplicationReadyEvent
     private final Random random = new Random();
 
     private static final String[] INTENTS = {
-            IntentType.BFF.name(),
             IntentType.DATING.name(),
-            IntentType.MARRIAGE.name(),
-            IntentType.RANDOM_CHAT_CALL.name()
+            IntentType.MARRIAGE.name()
     };
 
     @Override
     public void onApplicationEvent(ApplicationReadyEvent event) {
-       // seedTestData();
+        //seedTestData();
     }
 
     private void seedTestData() {

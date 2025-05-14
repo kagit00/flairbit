@@ -8,7 +8,6 @@ import com.dating.flairbit.repo.MediaFileRepository;
 import com.dating.flairbit.service.GroupConfigService;
 import com.dating.flairbit.service.match.suggestions.MatchSuggestionsStorageService;
 import com.dating.flairbit.service.user.UserService;
-import com.dating.flairbit.utils.ProfileUtils;
 import com.dating.flairbit.utils.response.ResponseMakerUtility;
 import com.google.common.collect.Lists;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +30,10 @@ public class MediaRetrievalServiceImpl implements MediaRetrievalService {
     private final GroupConfigService groupConfigService;
     private final ProfileProcessor profileProcessor;
 
+
+
     @Override
+    @Cacheable(value = "mediaCache", key = "#email + '_' + #intent", unless = "#result == null")
     @Transactional(readOnly = true)
     public List<MediaFileResponse> getUserReels(String email, String intent) {
         User user = userService.getUserByEmail(email);
@@ -43,26 +45,36 @@ public class MediaRetrievalServiceImpl implements MediaRetrievalService {
                 .toList();
     }
 
+
+
     @Override
     @Cacheable(value = "mediaCache", key = "#id", unless = "#result == null")
+    @Transactional(readOnly = true)
     public MediaFile getMediaFileById(UUID id) {
         return mediaFileRepository.findById(id).orElseThrow(
                 () -> new BadRequestException("Media not found")
         );
     }
 
+
+
     @Override
-    @Cacheable(value = "mediaCache", key = "#participantUsername + '_matched_user_reels_' + #cursor?.toString() + '_' + #limit + '_' + #intent")
+    @Cacheable(
+            value = "mediaCache",
+            key = "#participantUsername + '_potential_reels_' + #cursor?.toString() + '_' + #limit + '_' + #intent",
+            unless = "#result == null"
+    )
+    @Transactional(readOnly = true)
     public List<MediaFileResponse> getMatchedUsersReels(String participantUsername, LocalDateTime cursor, int limit, String intent) {
         MatchingGroupConfig group = groupConfigService.getGroupConfig(intent);
-        List<String> matchedUsernames = matchSuggestionsStorageService.retrieveByParticipantIdAndGroupId(participantUsername, group.getId()).stream()
+        List<String> suggestedUsernames = matchSuggestionsStorageService.retrieveMatchSuggestions(participantUsername, group.getId()).stream()
                 .map(MatchSuggestion::getMatchedParticipantId)
                 .distinct()
                 .toList();
 
         List<MediaFile> reels = new ArrayList<>();
         int remaining = limit;
-        for (List<String> batch : Lists.partition(matchedUsernames, 100)) {
+        for (List<String> batch : Lists.partition(suggestedUsernames, 100)) {
             List<MediaFile> batchResult = mediaFileRepository.findMediaFilesByUsernames(batch, cursor, limit);
             reels.addAll(batchResult);
             remaining -= batchResult.size();
@@ -74,8 +86,15 @@ public class MediaRetrievalServiceImpl implements MediaRetrievalService {
                 .toList();
     }
 
+
+
     @Override
-    @Cacheable(value = "mediaCache", key = "'most_liked_reels_' + #cursor?.toString() + '_' + #limit + '_' + #intent")
+    @Cacheable(
+            value = "mediaCache",
+            key = "'most_liked_reels_' + #cursor?.toString() + '_' + #limit + '_' + #intent",
+            unless = "#result == null"
+    )
+    @Transactional(readOnly = true)
     public List<MediaFileResponse> getMostLikedReels(LocalDateTime cursor, int limit, String intent) {
         MatchingGroupConfig group = groupConfigService.getGroupConfig(intent);
         List<MediaFile> reels = mediaFileRepository.findMostLikedByGroupId(group.getId(), cursor, limit);
@@ -85,8 +104,15 @@ public class MediaRetrievalServiceImpl implements MediaRetrievalService {
                 .toList();
     }
 
+
+
     @Override
-    @Cacheable(value = "mediaCache", key = "'most_viewed_reels_' + #cursor?.toString() + '_' + #limit + '_' + #intent")
+    @Cacheable(
+            value = "mediaCache",
+            key = "'most_viewed_reels_' + #cursor?.toString() + '_' + #limit + '_' + #intent",
+            unless = "#result == null"
+    )
+    @Transactional(readOnly = true)
     public List<MediaFileResponse> getMostViewedReels(LocalDateTime cursor, int limit, String intent) {
         MatchingGroupConfig group = groupConfigService.getGroupConfig(intent);
         List<MediaFile> reels = mediaFileRepository.findMostViewedByGroupId(group.getId(), cursor, limit);

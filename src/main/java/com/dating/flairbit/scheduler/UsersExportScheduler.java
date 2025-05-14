@@ -12,9 +12,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 
 @Slf4j
@@ -41,9 +40,17 @@ public class UsersExportScheduler {
     @Scheduled(cron = "${export.cron-schedule}")
     public void scheduledExportJob() {
         List<MatchingGroupConfig> groupConfigs = groupConfigRepository.findAll();
-        log.info("Starting export for active groups: {}", groupConfigs);
-        groupConfigs.forEach(
-                config -> usersExportService.processGroup(config.getId(), config.getType(), UUID.fromString(domainId))
-        );
+        log.info("Starting export for {} active groups", groupConfigs.size());
+
+        CompletableFuture<?>[] futures = groupConfigs.stream()
+                .map(config -> usersExportService.processGroup(config.getId(), config.getType(), UUID.fromString(domainId))
+                        .exceptionally(throwable -> {
+                            log.error("Failed to process group '{}': {}", config.getId(), throwable.getMessage());
+                            return null;
+                        }))
+                .toArray(CompletableFuture[]::new);
+
+        CompletableFuture.allOf(futures).join();
+        log.info("Completed export scheduling for all groups");
     }
 }

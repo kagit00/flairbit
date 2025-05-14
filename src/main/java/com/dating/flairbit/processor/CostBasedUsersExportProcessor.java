@@ -1,50 +1,79 @@
 package com.dating.flairbit.processor;
 
 import com.dating.flairbit.async.FlairBitProducer;
-import com.dating.flairbit.dto.ExportedFile;
 import com.dating.flairbit.dto.NodeExchange;
 import com.dating.flairbit.dto.db.UserExportDTO;
 import com.dating.flairbit.service.user.UsersExportFormattingService;
+import com.dating.flairbit.utils.Constant;
 import com.dating.flairbit.utils.basic.BasicUtility;
 import com.dating.flairbit.utils.basic.StringConcatUtil;
 import com.dating.flairbit.utils.request.RequestMakerUtility;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.retry.support.RetryTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
+
+@Slf4j
 @Component
 @RequiredArgsConstructor
-@Slf4j
 public class CostBasedUsersExportProcessor {
     private final UsersExportFormattingService usersExportFormattingService;
     private final FlairBitProducer flairBitProducer;
+    private final RetryTemplate retryTemplate;
+    private final MeterRegistry meterRegistry;
     private static final String USERS_EXPORT = "flairbit-users";
 
-    @Transactional
-    public void processGroup(String groupId, List<UserExportDTO> userDtos, UUID domainId, int batchSize) {
-        List<List<UserExportDTO>> batches = BasicUtility.partitionList(userDtos, batchSize);
-        for (int i = 0; i < batches.size(); i++) {
-            List<UserExportDTO> batch = batches.get(i);
-            ExportedFile file = usersExportFormattingService.exportCsv(batch, groupId, domainId);
-
-            if (Objects.isNull(file)) {
-                log.info("No matching profiles for group '{}', batch {}. Skipping export.", groupId, i);
-                continue;
-            }
-
-            String batchFileName = String.format("%s_batch_%d_users.csv", groupId, i);
-            NodeExchange payload = RequestMakerUtility.buildCostBasedNodes(groupId, file.filePath(), batchFileName, file.contentType(), domainId);
-            flairBitProducer.sendMessage(
-                    USERS_EXPORT,
-                    StringConcatUtil.concatWithSeparator("-", domainId.toString(), groupId),
-                    BasicUtility.stringifyObject(payload)
-            );
-            log.info("Exported for cost-based group '{}', batch {}", groupId, i);
+    public CompletableFuture<Void> processBatch(String groupId, List<UserExportDTO> batch, UUID domainId) {
+        if (isEmptyBatch(batch)) {
+            log.info("Empty batch for group '{}', Skipping export.", groupId);
+            return CompletableFuture.completedFuture(null);
         }
+
+        long startTime = System.nanoTime();
+        return usersExportFormattingService.exportCsv(batch, groupId, domainId)
+                .thenCompose(file -> {
+                    if (file == null) {
+                        log.info("No matching profiles for group '{}'. Skipping export.", groupId);
+                        return CompletableFuture.completedFuture(null);
+                    }
+
+                    String batchFileName = String.format("%s_batch_users.csv", groupId);
+                    NodeExchange payload = RequestMakerUtility.buildCostBasedNodes(
+                            groupId, file.filePath(), batchFileName, file.contentType(), domainId
+                    );
+
+                    retryTemplate.execute(context -> {
+                        flairBitProducer.sendMessage(
+                                USERS_EXPORT,
+                                StringConcatUtil.concatWithSeparator("-", domainId.toString(), groupId),
+                                BasicUtility.stringifyObject(payload)
+                        );
+                        return null;
+                    });
+
+                    long durationMs = (System.nanoTime() - startTime) / 1_000_000;
+                    log.info("Exported {} users for cost-based group '{}' in {} ms", batch.size(), groupId, durationMs);
+                    meterRegistry.timer("users_export_batch_duration", Constant.GROUP_ID, groupId).record(durationMs, TimeUnit.MILLISECONDS);
+                    meterRegistry.counter("users_export_batch_processed", "groupId", groupId).increment(batch.size());
+                    return CompletableFuture.completedFuture(null);
+                })
+                .handle((result, throwable) -> {
+                    if (throwable != null) {
+                        log.error("Failed to process batch for group '{}', {}", groupId, throwable.getMessage(), throwable);
+                        meterRegistry.counter("users_export_batch_failures", "groupId", groupId).increment();
+                    }
+                    return null;
+                });
+    }
+
+    private boolean isEmptyBatch(List<UserExportDTO> batch) {
+        return batch == null || batch.isEmpty();
     }
 }

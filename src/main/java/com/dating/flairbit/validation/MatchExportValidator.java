@@ -1,7 +1,6 @@
 package com.dating.flairbit.validation;
 
 import com.dating.flairbit.dto.MatchSuggestionsExchange;
-import com.dating.flairbit.dto.NodeExchange;
 import lombok.experimental.UtilityClass;
 
 @UtilityClass

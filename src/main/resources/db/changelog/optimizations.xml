@@ -30,4 +30,35 @@
         </sql>
     </changeSet>
 
+    <changeSet id="add-indexes-match-suggestions" author="gsss">
+        <createIndex
+                tableName="match_suggestions"
+                indexName="idx_match_suggestions">
+            <column name="participant_id"/>
+            <column name="group_id"/>
+            <column name="id"/>
+            <column name="compatibility_score"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="add-gin-index-preferences" author="gsss">
+        <sql>
+            <![CDATA[
+            CREATE INDEX idx_preferences_preferred_genders ON preferences USING GIN (string_to_array(trim(both '{}' from preferred_genders), ','));
+        ]]>
+        </sql>
+    </changeSet>
+
+    <changeSet id="20250514-001-users-query-indexes" author="grok">
+        <createIndex indexName="idx_user_match_states_group_sent_ready_profile" tableName="user_match_states">
+            <column name="group_id"/>
+            <column name="sent_to_matching_service"/>
+            <column name="ready_for_matching"/>
+            <column name="profile_id"/>
+        </createIndex>
+        <rollback>
+            <dropIndex indexName="idx_user_match_states_group_sent_ready_profile" tableName="user_match_states"/>
+        </rollback>
+    </changeSet>
+
 </databaseChangeLog>

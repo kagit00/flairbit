@@ -19,7 +19,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
-
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
@@ -59,7 +58,7 @@ public class MatchSuggestionsImportJobProcessor {
 
                     BatchUtils.processInBatches(matchSuggestions, batchSize, subBatch -> {
                         try {
-                            matchSuggestionsStorageService.saveMatches(subBatch);
+                            matchSuggestionsStorageService.saveMatchSuggestions(subBatch);
                             subBatch.forEach(m -> success.add(m.getParticipantId()));
                             matchSuggestionsImportJobRepository.incrementProcessed(jobId, subBatch.size());
                         } catch (Exception e) {
@@ -84,7 +83,6 @@ public class MatchSuggestionsImportJobProcessor {
             handleUnexpectedFailure(jobId, groupId, e);
         }
     }
-
 
     private void completeJob(UUID jobId, String groupId, List<String> success, int total) {
         matchSuggestionsImportJobRepository.markCompleted(jobId);
