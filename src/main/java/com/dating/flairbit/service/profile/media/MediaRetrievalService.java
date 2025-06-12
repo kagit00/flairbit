@@ -6,12 +6,13 @@ import com.dating.flairbit.models.MediaFile;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 
 public interface MediaRetrievalService {
-    List<MediaFileResponse> getUserReels(String email, String intent);
-    MediaFile getMediaFileById(UUID id);
-    List<MediaFileResponse> getMostLikedReels(LocalDateTime cursor, int limit, String intent);
-    List<MediaFileResponse> getMatchedUsersReels(String participantUsername, LocalDateTime cursor, int limit, String intent);
-    List<MediaFileResponse> getMostViewedReels(LocalDateTime cursor, int limit, String intent);
+    CompletableFuture<List<MediaFileResponse>> getUserReels(String email, String intent);
+    CompletableFuture<MediaFile> getMediaFileById(UUID id);
+    CompletableFuture<List<MediaFileResponse>> getMostLikedReels(LocalDateTime cursor, int limit, String intent);
+    CompletableFuture<List<MediaFileResponse>> getMatchedUsersReels(String participantUsername, LocalDateTime cursor, int limit, String intent);
+    CompletableFuture<List<MediaFileResponse>> getMostViewedReels(LocalDateTime cursor, int limit, String intent);
 }

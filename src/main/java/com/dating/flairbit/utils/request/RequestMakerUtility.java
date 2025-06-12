@@ -12,8 +12,11 @@ import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import reactor.core.publisher.Flux;
+
 import java.time.LocalDate;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 
 @UtilityClass
@@ -28,28 +31,31 @@ public final class RequestMakerUtility {
                 .build();
     }
 
-    public static List<MatchSuggestion> convertResponsesToMatchSuggestions(List<MatchSuggestionDTO> responses, String groupId) {
-        List<MatchSuggestion> result = new ArrayList<>();
-        for (int i = 0; i < responses.size(); i++) {
-            MatchSuggestionDTO res = responses.get(i);
+    public static Flux<MatchSuggestion> convertResponsesToMatchSuggestions(Flux<MatchSuggestionDTO> responses, String groupId) {
+        AtomicLong totalCount = new AtomicLong();
+        AtomicLong validCount = new AtomicLong();
 
-            try {
-                MatchSuggestion matchSuggestion = MatchSuggestion.builder()
-                        .groupId(groupId)
-                        .participantId(res.getParticipantId())
-                        .matchedParticipantId(res.getMatchedParticipantId())
-                        .compatibilityScore(res.getCompatibilityScore())
-                        .matchSuggestionType(res.getMatchSuggestionType())
-                        .build();
-
-                matchSuggestion.setCreatedAt(DefaultValuesPopulator.getCurrentTimestamp());
-                result.add(matchSuggestion);
-            } catch (Exception e) {
-                log.error("Error transforming MatchSuggestion at index {}: {}", i, e.getMessage(), e);
-            }
-        }
-        log.info("{} valid Match Suggestions out of {}", result.size(), responses.size());
-        return result;
+        return responses
+                .doOnNext(dto -> totalCount.incrementAndGet())
+                .map(dto -> {
+                    try {
+                        MatchSuggestion matchSuggestion = MatchSuggestion.builder()
+                                .groupId(groupId)
+                                .participantId(dto.getParticipantId())
+                                .matchedParticipantId(dto.getMatchedParticipantId())
+                                .compatibilityScore(dto.getCompatibilityScore())
+                                .matchSuggestionType(dto.getMatchSuggestionType())
+                                .createdAt(DefaultValuesPopulator.getCurrentTimestamp())
+                                .build();
+                        validCount.incrementAndGet();
+                        return matchSuggestion;
+                    } catch (Exception e) {
+                        log.error("Error transforming MatchSuggestion for participantId={}: {}", dto.getParticipantId(), e.getMessage(), e);
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .doOnComplete(() -> log.info("{} valid MatchSuggestions out of {}", validCount.get(), totalCount.get()));
     }
 
     public static NodeExchange buildCostBasedNodes(String groupId, String filePath, String fileName, String contentType, UUID domainId) {

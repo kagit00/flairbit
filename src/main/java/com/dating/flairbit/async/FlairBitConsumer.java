@@ -38,9 +38,9 @@ public class FlairBitConsumer extends BaseKafkaConsumer {
     }
 
     @KafkaListener(
-            topicPattern = "#{@matchSuggestionsImportConfig.topicPattern}",
-            groupId = "#{@matchSuggestionsImportConfig.groupId}",
-            concurrency = "#{@matchSuggestionsImportConfig.concurrency}",
+            topicPattern = "#{@reelInteractionConfig.topicPattern}",
+            groupId = "#{@reelInteractionConfig.groupId}",
+            concurrency = "#{@reelInteractionConfig.concurrency}",
             containerFactory = "kafkaListenerContainerFactory"
     )
     @Transactional

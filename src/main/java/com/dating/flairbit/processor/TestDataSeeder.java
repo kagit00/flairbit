@@ -15,7 +15,6 @@ import com.github.javafaker.Faker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-
 import java.time.LocalDate;
 import java.util.*;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -26,7 +25,6 @@ import org.springframework.context.ApplicationListener;
 @RequiredArgsConstructor
 @Slf4j
 public class TestDataSeeder implements ApplicationListener<ApplicationReadyEvent> {
-
     private final AuthenticationService authenticationService;
     private final ProfileService profileService;
     private final EducationUpdateService educationService;
@@ -35,8 +33,8 @@ public class TestDataSeeder implements ApplicationListener<ApplicationReadyEvent
     private final PreferencesUpdateService preferencesService;
     private final ProfessionUpdateService professionService;
 
-    private static final int BATCH_SIZE = 10000;
-    private static final int TOTAL_USERS = 100000;
+    private static final int BATCH_SIZE = 1000;
+    private static final int TOTAL_USERS = 10000;
     private static final List<String> RELIGIONS = List.of(
             "Christianity", "Islam", "Hinduism", "Buddhism", "Judaism",
             "Sikhism", "Atheism", "Agnosticism", "Other"

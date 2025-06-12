@@ -10,109 +10,120 @@ import com.dating.flairbit.repo.MatchSuggestionsImportJobRepository;
 import com.dating.flairbit.service.match.suggestions.MatchSuggestionsStorageService;
 import com.dating.flairbit.utils.basic.BasicUtility;
 import com.dating.flairbit.utils.basic.StringConcatUtil;
-import com.dating.flairbit.utils.db.BatchUtils;
-import com.dating.flairbit.utils.media.csv.CsvParser;
+import com.dating.flairbit.utils.media.praquet.ParquetParser;
 import com.dating.flairbit.utils.request.RequestMakerUtility;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
-import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.zip.GZIPInputStream;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
+import java.io.IOException;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
+
+
+@Slf4j
 @Component
 @RequiredArgsConstructor
-@Slf4j
 public class MatchSuggestionsImportJobProcessor {
-    private static final String MATCH_SUGGESTIONS_TRANSFER_JOB_STATUS_TOPIC = "flairbit-match-suggestions-transfer-job-status-retrieval";
+    private static final String TOPIC = "flairbit-match-suggestions-transfer-job-status-retrieval";
+    private static final int MAX_BATCH_SIZE = 10000;
 
-    private final MatchSuggestionsImportJobRepository matchSuggestionsImportJobRepository;
-    private final MatchSuggestionsStorageService matchSuggestionsStorageService;
-    private final ResponseFactory<MatchSuggestionDTO> matchSuggestionDTOResponseFactory;
-    private final FlairBitProducer flairBitProducer;
+    private final MatchSuggestionsImportJobRepository repository;
+    private final MatchSuggestionsStorageService service;
+    private final ResponseFactory<MatchSuggestionDTO> factory;
+    private final FlairBitProducer producer;
+    private final ExecutorService matchSuggestionsImportExecutor;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${domain-id}")
     private String domainId;
 
-    @Transactional
-    public void process(UUID jobId, MultipartFile file, String groupId, int batchSize) {
-        try {
-            log.info("Job {} started for groupId={}, file name={}, size={} bytes", jobId, groupId, file.getOriginalFilename(), file.getSize());
-            matchSuggestionsImportJobRepository.updateStatus(jobId, JobStatus.PROCESSING);
+    public CompletableFuture<Object> process(UUID jobId,
+                                             MultipartFile file,
+                                             String groupId,
+                                             int batchSize) throws IOException {
+        log.info("Job {} started: groupId={}, file={}, size={} bytes",
+                jobId, groupId, file.getOriginalFilename(), file.getSize());
 
-            AtomicInteger totalCounter = new AtomicInteger();
-            List<String> success = new ArrayList<>();
-            List<String> failed = new ArrayList<>();
+        transactionTemplate.execute(status -> {
+            repository.updateStatus(jobId, JobStatus.PROCESSING);
+            return null;
+        });
 
-            try (InputStream gzipStream = new GZIPInputStream(file.getInputStream())) {
-                CsvParser.parseInBatches(gzipStream, matchSuggestionDTOResponseFactory, batch -> {
+        AtomicInteger totalCounter = new AtomicInteger();
+        AtomicInteger errorCounter = new AtomicInteger();
+        int effectiveBatchSize = Math.min(batchSize, MAX_BATCH_SIZE);
+
+        return ParquetParser.parseInStream(file.getInputStream(), factory)
+                .buffer(effectiveBatchSize)
+                .concatMap(batch -> {
                     totalCounter.addAndGet(batch.size());
-                    List<MatchSuggestion> matchSuggestions = RequestMakerUtility.convertResponsesToMatchSuggestions(batch, groupId);
-                    if (matchSuggestions.isEmpty()) return;
+                    Flux<MatchSuggestion> suggestions = RequestMakerUtility
+                            .convertResponsesToMatchSuggestions(Flux.fromIterable(batch), groupId);
+                    return Mono.fromFuture(service.saveMatchSuggestions(suggestions, groupId))
+                            .then(Mono.fromRunnable(() -> transactionTemplate.execute(status -> {
+                                repository.incrementProcessed(jobId, batch.size());
+                                return null;
+                            })))
+                            .doOnError(e -> {
+                                errorCounter.addAndGet(batch.size());
+                                log.warn("Batch failed, skipping {} matches: {}", batch.size(), e.getMessage());
+                            })
+                            .onErrorResume(e -> Mono.empty());
+                })
+                .then(Mono.fromRunnable(() -> transactionTemplate.execute(status -> {
+                    int total = totalCounter.get();
+                    repository.updateTotalRows(jobId, total);
 
-                    BatchUtils.processInBatches(matchSuggestions, batchSize, subBatch -> {
-                        try {
-                            matchSuggestionsStorageService.saveMatchSuggestions(subBatch);
-                            subBatch.forEach(m -> success.add(m.getParticipantId()));
-                            matchSuggestionsImportJobRepository.incrementProcessed(jobId, subBatch.size());
-                        } catch (Exception e) {
-                            subBatch.forEach(m -> failed.add(m.getParticipantId()));
-                            log.warn("Sub-batch failed, skipping {} match: {}", subBatch.size(), e.getMessage());
-                        }
-                    });
+                    int processed = repository.getProcessedRows(jobId);
+
+                    if (processed < total - errorCounter.get()) {
+                        failJob(jobId, groupId, "Some match suggestions failed", processed, total);
+                    } else {
+                        completeJob(jobId, groupId, total);
+                    }
+                    return null;
+                })))
+                .publishOn(Schedulers.fromExecutor(matchSuggestionsImportExecutor))
+                .toFuture()
+                .exceptionally(throwable -> {
+                    log.error("Job {} failed: {}", jobId, throwable.getMessage(), throwable);
+                    handleUnexpectedFailure(jobId, groupId, throwable);
+                    return null;
                 });
-            }
-
-            int total = totalCounter.get();
-            matchSuggestionsImportJobRepository.updateTotalRows(jobId, total);
-
-            if (!failed.isEmpty()) {
-                failJob(jobId, groupId, "Some match suggestions failed during saving.", success, failed, total);
-            } else {
-                completeJob(jobId, groupId, success, total);
-            }
-
-        } catch (Exception e) {
-            log.error("Job {} failed: {}", jobId, e.getMessage(), e);
-            handleUnexpectedFailure(jobId, groupId, e);
-        }
     }
 
-    private void completeJob(UUID jobId, String groupId, List<String> success, int total) {
-        matchSuggestionsImportJobRepository.markCompleted(jobId);
-
-        NodesTransferJobExchange job = RequestMakerUtility.buildImportJobReq(jobId, groupId, JobStatus.COMPLETED.name(), total, total, success, List.of(), domainId);
+    private void completeJob(UUID jobId, String groupId, int total) {
+        repository.markCompleted(jobId);
+        NodesTransferJobExchange job = RequestMakerUtility.buildImportJobReq(jobId, groupId, JobStatus.COMPLETED.name(), total, total, List.of(), List.of(), domainId);
         sendStatus(job);
     }
 
-    private void failJob(UUID jobId, String groupId, String reason, List<String> success, List<String> failed, int total) {
-        matchSuggestionsImportJobRepository.markFailed(jobId, reason);
-
-        NodesTransferJobExchange job = RequestMakerUtility.buildImportJobReq(jobId, groupId, JobStatus.FAILED.name(), total, total, success, List.of(), domainId);
+    private void failJob(UUID jobId, String groupId, String reason, int processed, int total) {
+        repository.markFailed(jobId, reason);
+        NodesTransferJobExchange job = RequestMakerUtility.buildImportJobReq(jobId, groupId, JobStatus.FAILED.name(), processed, total, List.of(), List.of(), domainId);
         sendStatus(job);
     }
 
-    private void handleUnexpectedFailure(UUID jobId, String groupId, Exception e) {
-        matchSuggestionsImportJobRepository.markFailed(jobId, "Unexpected error: " + e.getMessage());
-
-        int processed = matchSuggestionsImportJobRepository.getProcessedRows(jobId);
-        int total = matchSuggestionsImportJobRepository.getTotalNodes(jobId);
-
+    private void handleUnexpectedFailure(UUID jobId, String groupId, Throwable e) {
+        repository.markFailed(jobId, "Unexpected error: " + e.getMessage());
+        int processed = repository.getProcessedRows(jobId);
+        int total = repository.getTotalRows(jobId);
         NodesTransferJobExchange job = RequestMakerUtility.buildImportJobReq(jobId, groupId, JobStatus.FAILED.name(), processed, total, List.of(), List.of(), domainId);
         sendStatus(job);
     }
 
     private void sendStatus(NodesTransferJobExchange job) {
-        flairBitProducer.sendMessage(
-                MATCH_SUGGESTIONS_TRANSFER_JOB_STATUS_TOPIC,
-                StringConcatUtil.concatWithSeparator("-", domainId, job.getJobId().toString()),
-                BasicUtility.stringifyObject(job)
-        );
+        producer.sendMessage(TOPIC, StringConcatUtil.concatWithSeparator("-", domainId, job.getJobId().toString()), BasicUtility.stringifyObject(job));
     }
 }

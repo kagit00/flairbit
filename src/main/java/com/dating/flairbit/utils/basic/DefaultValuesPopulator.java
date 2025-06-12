@@ -48,4 +48,8 @@ public final class DefaultValuesPopulator {
         return role;
     }
 
+    public static UUID getUid2() {
+        return UUID.randomUUID();
+    }
+
 }

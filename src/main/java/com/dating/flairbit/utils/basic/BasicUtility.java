@@ -8,12 +8,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.jayway.jsonpath.JsonPath;
+import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.URL;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -22,6 +29,7 @@ import java.util.function.Function;
 import java.util.zip.GZIPInputStream;
 
 @Slf4j
+@UtilityClass
 public final class BasicUtility {
 
     private static final ObjectMapper om = new ObjectMapper()
@@ -29,11 +37,7 @@ public final class BasicUtility {
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-
-    private BasicUtility() {
-        throw new UnsupportedOperationException("Not supported");
-    }
-
+    private static final LocalDateTime PG_EPOCH = LocalDateTime.of(2000, 1, 1, 0, 0, 0);
 
     public static String stringifyObject(Object o) {
         try {
@@ -128,4 +132,21 @@ public final class BasicUtility {
             throw new BadRequestException("Failed to decompress fileContent: " + e.getMessage());
         }
     }
+
+    public static void writeTimestamp(LocalDateTime timestamp, DataOutputStream out) throws IOException {
+        if (timestamp == null) {
+            log.error("Null timestamp provided for binary COPY");
+            throw new IllegalArgumentException("Timestamp cannot be null");
+        }
+
+        out.writeInt(8);
+
+        ZoneOffset offset = ZoneOffset.UTC;
+        Instant pgEpochInstant = PG_EPOCH.toInstant(offset);
+        Instant tsInstant = timestamp.toInstant(offset);
+
+        long microsSincePgEpoch = Duration.between(pgEpochInstant, tsInstant).toNanos() / 1000;
+        out.writeLong(microsSincePgEpoch);
+    }
+
 }

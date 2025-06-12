@@ -6,6 +6,7 @@ import com.dating.flairbit.config.factory.ResponseFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,10 +21,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.sql.SQLException;
 import java.util.Map;
-import java.util.concurrent.Executor;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 @Slf4j
 @Configuration
@@ -46,6 +44,42 @@ public class Beans {
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.setTaskDecorator(runnable -> runnable);
         executor.initialize();
+        return executor;
+    }
+
+    @Bean
+    public ExecutorService matchSuggestionsImportExecutor() {
+        ThreadFactory threadFactory = new ThreadFactoryBuilder().setNameFormat("io-executor-%d").build();
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                4, 8, 0L, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(500),
+                threadFactory,
+                new ThreadPoolExecutor.CallerRunsPolicy() {
+                    @Override
+                    public void rejectedExecution(Runnable r, ThreadPoolExecutor e) {
+                        super.rejectedExecution(r, e);
+                    }
+                }
+        );
+        executor.allowCoreThreadTimeOut(false);
+        return executor;
+    }
+
+    @Bean
+    public ExecutorService ioExecutor() {
+        ThreadFactory threadFactory = new ThreadFactoryBuilder().setNameFormat("io-executor-%d").build();
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                8, 16, 0L, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(1000),
+                threadFactory,
+                new ThreadPoolExecutor.CallerRunsPolicy() {
+                    @Override
+                    public void rejectedExecution(Runnable r, ThreadPoolExecutor e) {
+                        super.rejectedExecution(r, e);
+                    }
+                }
+        );
+        executor.allowCoreThreadTimeOut(false);
         return executor;
     }
 

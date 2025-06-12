@@ -2,45 +2,60 @@ package com.dating.flairbit.service.match.suggestions;
 
 
 import com.dating.flairbit.models.MatchSuggestion;
-import com.dating.flairbit.repo.MatchSuggestionsRepository;
-import lombok.RequiredArgsConstructor;
+import com.dating.flairbit.processor.MatchSuggestionsStorageProcessor;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import reactor.core.publisher.Flux;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class MatchSuggestionsStorageServiceImpl implements MatchSuggestionsStorageService {
-    private final MatchSuggestionsRepository matchSuggestionsRepository;
+    private final MatchSuggestionsStorageProcessor processor;
+    private volatile boolean shutdownInitiated = false;
 
-    @Override
-    @Transactional
-    public void saveMatchSuggestions(List<MatchSuggestion> matchSuggestions) {
-        List<MatchSuggestion> deduplicated = matchSuggestions.stream()
-                .collect(Collectors.collectingAndThen(
-                        Collectors.toMap(
-                                m -> m.getParticipantId() + "|" + m.getMatchedParticipantId() + "|" + m.getGroupId() + "|" + m.getMatchSuggestionType(),
-                                Function.identity(),
-                                (existing, duplicate) -> existing
-                        ),
-                        map -> new ArrayList<>(map.values())
-                ));
+    public MatchSuggestionsStorageServiceImpl(MatchSuggestionsStorageProcessor processor) {
+        this.processor = processor;
+    }
 
-        matchSuggestionsRepository.saveAll(deduplicated);
+    @PreDestroy
+    private void shutdown() {
+        shutdownInitiated = true;
     }
 
     @Override
-    @Cacheable(value = "matchSuggestionsCache", key = "#participantUsername" + "_matches_" + "#groupId")
-    @Transactional(readOnly = true)
-    public List<MatchSuggestion> retrieveMatchSuggestions(String participantUsername, String groupId) {
-        return matchSuggestionsRepository.findFilteredSuggestions(participantUsername, groupId);
+    public CompletableFuture<Void> saveMatchSuggestions(Flux<MatchSuggestion> matchSuggestions, String groupId) {
+        if (shutdownInitiated) {
+            log.warn("Save aborted due to shutdown");
+            return CompletableFuture.failedFuture(new IllegalStateException("MatchSuggestionsStorageService is shutting down"));
+        }
+
+        log.info("Saving match suggestions for groupId={}", groupId);
+        return processor.saveMatchSuggestions(matchSuggestions, groupId)
+                .orTimeout(1_800_000, TimeUnit.MILLISECONDS)
+                .exceptionally(throwable -> {
+                    log.error("Failed to save match suggestions for groupId={}: {}", groupId, throwable.getMessage());
+                    throw new CompletionException("Save failed", throwable);
+                });
+    }
+
+    @Override
+    public CompletableFuture<List<MatchSuggestion>> retrieveMatchSuggestions(String participantUsername, String groupId) {
+        if (shutdownInitiated) {
+            log.warn("Retrieve aborted for participantUsername={} and groupId={} due to shutdown", participantUsername, groupId);
+            return CompletableFuture.failedFuture(new IllegalStateException("MatchSuggestionsStorageService is shutting down"));
+        }
+
+        return processor.findFilteredSuggestions(participantUsername, groupId)
+                .orTimeout(1_800_000, TimeUnit.MILLISECONDS)
+                .exceptionally(throwable -> {
+                    log.error("Failed to retrieve match suggestions for participantUsername={}, groupId={}: {}", participantUsername, groupId, throwable.getMessage());
+                    throw new CompletionException("Retrieve failed", throwable);
+                });
     }
 }

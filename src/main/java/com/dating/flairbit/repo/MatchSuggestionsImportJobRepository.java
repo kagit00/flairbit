@@ -36,5 +36,5 @@ public interface MatchSuggestionsImportJobRepository extends JpaRepository<Match
     int getProcessedRows(@Param("jobId") UUID jobId);
 
     @Query("SELECT g.totalRows FROM MatchSuggestionsImportJob g WHERE g.id = :jobId")
-    int getTotalNodes(@Param("jobId") UUID jobId);
+    int getTotalRows(@Param("jobId") UUID jobId);
 }
