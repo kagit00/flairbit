@@ -34,7 +34,8 @@ public class TestDataSeeder implements ApplicationListener<ApplicationReadyEvent
     private final ProfessionUpdateService professionService;
 
     private static final int BATCH_SIZE = 1000;
-    private static final int TOTAL_USERS = 10000;
+    private static final int TOTAL_USERS = 20000;
+    private static final int INIT = 0;
     private static final List<String> RELIGIONS = List.of(
             "Christianity", "Islam", "Hinduism", "Buddhism", "Judaism",
             "Sikhism", "Atheism", "Agnosticism", "Other"
@@ -54,7 +55,7 @@ public class TestDataSeeder implements ApplicationListener<ApplicationReadyEvent
     }
 
     private void seedTestData() {
-        for (int i = 0; i < TOTAL_USERS; i++) {
+        for (int i = INIT; i < INIT + TOTAL_USERS; i++) {
             try {
                 seedSingleUser(i);
                 if ((i + 1) % BATCH_SIZE == 0) {

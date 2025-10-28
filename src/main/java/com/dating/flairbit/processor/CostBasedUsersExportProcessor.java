@@ -50,6 +50,7 @@ public class CostBasedUsersExportProcessor {
                     );
 
                     retryTemplate.execute(context -> {
+                        log.info(BasicUtility.stringifyObject(payload));
                         flairBitProducer.sendMessage(
                                 USERS_EXPORT,
                                 StringConcatUtil.concatWithSeparator("-", domainId.toString(), groupId),
