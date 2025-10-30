@@ -9,12 +9,14 @@ import lombok.NoArgsConstructor;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class PreferencesResponse {
+    private UUID id;
     private Set<String> preferredGenders = new HashSet<>();
     private Integer preferredMinAge;
     private Integer preferredMaxAge;

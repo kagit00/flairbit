@@ -6,7 +6,9 @@ import com.dating.flairbit.models.*;
 import com.dating.flairbit.models.User;
 import com.dating.flairbit.utils.basic.DefaultValuesPopulator;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 
@@ -18,6 +20,7 @@ public final class ResponseMakerUtility {
 
     public static ProfessionResponse buildProfession(Profession pr) {
         return ProfessionResponse.builder()
+                .id(pr.getId())
                 .company(pr.getCompany())
                 .industry(pr.getIndustry())
                 .jobTitle(pr.getJobTitle())
@@ -26,7 +29,7 @@ public final class ResponseMakerUtility {
 
     public static EducationResponse buildEducation(Education ed) {
         return EducationResponse.builder()
-                .degree(ed.getDegree())
+                .degree(ed.getDegree()).id(ed.getId())
                 .fieldOfStudy(ed.getFieldOfStudy())
                 .graduationYear(ed.getGraduationYear())
                 .institution(ed.getInstitution())
@@ -35,7 +38,7 @@ public final class ResponseMakerUtility {
 
     public static LocationResponse buildLocation(Location loc) {
         return LocationResponse.builder()
-                .city(loc.getCity())
+                .city(loc.getCity()).id(loc.getId())
                 .country(loc.getCountry())
                 .latitude(loc.getLatitude())
                 .longitude(loc.getLongitude())
@@ -44,7 +47,7 @@ public final class ResponseMakerUtility {
 
     public static LifestyleResponse buildLifestyle(Lifestyle lifestyle) {
         return LifestyleResponse.builder()
-                .drinks(lifestyle.getDrinks())
+                .drinks(lifestyle.getDrinks()).id(lifestyle.getId())
                 .smokes(lifestyle.getSmokes())
                 .religion(lifestyle.getReligion())
                 .build();
@@ -52,7 +55,7 @@ public final class ResponseMakerUtility {
 
     public static PreferencesResponse buildPreferences(Preferences preferences) {
         return PreferencesResponse.builder()
-                .preferredGenders(preferences.getPreferredGenders())
+                .preferredGenders(preferences.getPreferredGenders()).id(preferences.getId())
                 .preferredMinAge(preferences.getPreferredMinAge())
                 .preferredMaxAge(preferences.getPreferredMaxAge())
                 .openToLongDistance(preferences.getOpenToLongDistance())
@@ -61,9 +64,27 @@ public final class ResponseMakerUtility {
                 .build();
     }
 
-    public static ProfileResponse getProfileResponse(Profile profile) {
+    public static ProfileResponse getFullProfileResponse(Profile profile, String email) {
+        List<MediaFileResponse> mediaFiles = new ArrayList<>();
+        for (MediaFile mediaFile : profile.getMediaFiles()) {
+            MediaFileResponse mediaFileResponse = getMediaFileResponse(mediaFile);
+            mediaFiles.add(mediaFileResponse);
+        }
+
         return ProfileResponse.builder()
-                .bio(profile.getBio()).userEmail(profile.getUser().getEmail())
+                .bio(profile.getBio()).userEmail(email)
+                .displayName(profile.getDisplayName()).headline(profile.getHeadline())
+                .profession(buildProfession(profile.getProfession()))
+                .education(buildEducation(profile.getEducation()))
+                .lifestyle(buildLifestyle(profile.getLifestyle())).location(buildLocation(profile.getLocation()))
+                .preferences(buildPreferences(profile.getPreferences()))
+                .mediaFiles(mediaFiles)
+                .build();
+    }
+
+    public static ProfileResponse getBasicProfileResponse(Profile profile, String email) {
+        return ProfileResponse.builder()
+                .bio(profile.getBio()).userEmail(email)
                 .displayName(profile.getDisplayName()).headline(profile.getHeadline())
                 .build();
     }

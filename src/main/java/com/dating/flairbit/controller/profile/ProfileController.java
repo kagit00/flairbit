@@ -6,10 +6,10 @@ import com.dating.flairbit.dto.ProfileResponse;
 import com.dating.flairbit.models.Profile;
 import com.dating.flairbit.service.profile.ProfileService;
 import com.dating.flairbit.utils.response.ResponseMakerUtility;
-import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -26,10 +26,10 @@ public class ProfileController {
     private final ProfileService profileService;
 
     @Transactional
-    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @PutMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ProfileResponse> createOrUpdateProfile(@PathVariable String email, @RequestBody @Valid ProfileRequest profileRequest) {
         Profile profile = profileService.createOrUpdateProfile(email, profileRequest);
-        return ResponseEntity.ok(ResponseMakerUtility.getProfileResponse(profile));
+        return ResponseEntity.ok(ResponseMakerUtility.getBasicProfileResponse(profile, email));
     }
 
 

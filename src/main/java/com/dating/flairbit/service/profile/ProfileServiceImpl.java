@@ -7,6 +7,7 @@ import com.dating.flairbit.models.MatchingGroupConfig;
 import com.dating.flairbit.models.Profile;
 import com.dating.flairbit.models.User;
 import com.dating.flairbit.processor.ProfileProcessor;
+import com.dating.flairbit.repo.ProfileJDBCRepository;
 import com.dating.flairbit.repo.ProfileRepository;
 import com.dating.flairbit.service.GroupConfigService;
 import com.dating.flairbit.service.user.UserMatchStateService;
@@ -68,6 +69,6 @@ public class ProfileServiceImpl implements ProfileService {
         User user = userService.getUserByEmail(email);
         Profile profile = profileProcessor.getProfile(user, intent);
         if (Objects.isNull(profile)) throw new BadRequestException("No profile with intent: " + intent);
-        return ResponseMakerUtility.getProfileResponse(profile);
+        return ResponseMakerUtility.getFullProfileResponse(profile, email);
     }
 }
