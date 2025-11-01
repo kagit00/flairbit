@@ -12,6 +12,7 @@ import com.dating.flairbit.utils.basic.DefaultValuesPopulator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.Objects;
@@ -26,6 +27,7 @@ public class ProfessionUpdateServiceImpl implements ProfessionUpdateService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {"profileCache"}, key = "#email")
     public void createOrUpdateProfession(String email, ProfessionRequest request, String intent) {
         User user = userService.getUserByEmail(email);
         Profile profile = profileProcessor.getProfile(user, intent);

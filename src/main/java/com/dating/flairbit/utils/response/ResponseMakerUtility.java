@@ -66,18 +66,21 @@ public final class ResponseMakerUtility {
 
     public static ProfileResponse getFullProfileResponse(Profile profile, String email) {
         List<MediaFileResponse> mediaFiles = new ArrayList<>();
-        for (MediaFile mediaFile : profile.getMediaFiles()) {
-            MediaFileResponse mediaFileResponse = getMediaFileResponse(mediaFile);
-            mediaFiles.add(mediaFileResponse);
+        if (!profile.getMediaFiles().isEmpty()) {
+            for (MediaFile mediaFile : profile.getMediaFiles()) {
+                MediaFileResponse mediaFileResponse = getMediaFileResponse(mediaFile);
+                mediaFiles.add(mediaFileResponse);
+            }
         }
 
         return ProfileResponse.builder()
                 .bio(profile.getBio()).userEmail(email)
                 .displayName(profile.getDisplayName()).headline(profile.getHeadline())
-                .profession(buildProfession(profile.getProfession()))
-                .education(buildEducation(profile.getEducation()))
-                .lifestyle(buildLifestyle(profile.getLifestyle())).location(buildLocation(profile.getLocation()))
-                .preferences(buildPreferences(profile.getPreferences()))
+                .profession(profile.getProfession() == null? ProfessionResponse.builder().build() : buildProfession(profile.getProfession()))
+                .education(profile.getEducation() == null? EducationResponse.builder().build() : buildEducation(profile.getEducation()))
+                .lifestyle(profile.getLifestyle() == null? LifestyleResponse.builder().build() : buildLifestyle(profile.getLifestyle()))
+                .location(profile.getLocation() == null? LocationResponse.builder().build() : buildLocation(profile.getLocation()))
+                .preferences(profile.getPreferences() == null? PreferencesResponse.builder().build() : buildPreferences(profile.getPreferences()))
                 .mediaFiles(mediaFiles)
                 .build();
     }

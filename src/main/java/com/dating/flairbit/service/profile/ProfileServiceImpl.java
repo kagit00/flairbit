@@ -17,6 +17,7 @@ import com.dating.flairbit.utils.request.RequestMakerUtility;
 import com.dating.flairbit.utils.response.ResponseMakerUtility;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +36,7 @@ public class ProfileServiceImpl implements ProfileService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {"profileCache"}, key = "#email")
     public Profile createOrUpdateProfile(String email, ProfileRequest profileRequest) {
         User user = userService.getUserByEmail(email);
         Profile profile = profileProcessor.getProfile(user, profileRequest.getIntent());

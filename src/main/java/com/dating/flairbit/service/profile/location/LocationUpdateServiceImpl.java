@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +31,7 @@ public class LocationUpdateServiceImpl implements LocationUpdateService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {"profileCache"}, key = "#email")
     public void createOrUpdateLocation(String email, LocationRequest request, String intent) {
         User user = userService.getUserByEmail(email);
         Profile profile = profileProcessor.getProfile(user, intent);

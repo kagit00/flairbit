@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +30,7 @@ public class LifeStyleUpdateServiceImpl implements LifeStyleUpdateService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {"profileCache"}, key = "#email")
     public void createOrUpdateLifestyle(String email, LifestyleRequest request, String intent) {
         if (ObjectUtils.allNull(request)) throw new BadRequestException("Lifestyle request cannot be empty.");
 

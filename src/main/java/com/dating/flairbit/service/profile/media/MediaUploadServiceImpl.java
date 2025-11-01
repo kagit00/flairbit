@@ -13,6 +13,7 @@ import com.dating.flairbit.utils.ProfileUtils;
 import com.dating.flairbit.validation.FileValidationUtility;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -31,6 +32,7 @@ public class MediaUploadServiceImpl implements MediaUploadService{
 
 
     @Override
+    @CacheEvict(value = {"profileCache"}, key = "#email")
     public void processUploading(String email, MultipartFile file, MediaUploadResponse response, ReelType reelType, String intent) {
         User user = userService.getUserByEmail(email);
         Profile profile = profileProcessor.getProfile(user, intent);

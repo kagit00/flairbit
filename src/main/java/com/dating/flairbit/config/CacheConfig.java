@@ -60,7 +60,14 @@ public class CacheConfig {
             public Validity validateSubClassName(MapperConfig<?> config, JavaType baseType, String subClassName)
                     throws JsonMappingException {
                 if (subClassName.startsWith("com.dating.flairbit.models") ||
-                        subClassName.startsWith("com.dating.flairbit.dto")) {
+                        subClassName.startsWith("com.dating.flairbit.dto") ||
+                        subClassName.startsWith("com.dating.flairbit.common") ||
+                        subClassName.startsWith("java.util.") ||
+                        subClassName.startsWith("java.time.") ||
+                        "boolean".equals(subClassName) ||
+                        "int".equals(subClassName) ||
+                        "long".equals(subClassName) ||
+                        "double".equals(subClassName)) {
                     return Validity.ALLOWED;
                 }
                 return Validity.DENIED;
@@ -71,7 +78,12 @@ public class CacheConfig {
                     throws JsonMappingException {
                 String className = subType.getRawClass().getName();
                 if (className.startsWith("com.dating.flairbit.models") ||
-                        className.startsWith("com.dating.flairbit.common")) {
+                        className.startsWith("com.dating.flairbit.dto") ||
+                        className.startsWith("com.dating.flairbit.common") ||
+                        className.startsWith("java.util.") ||
+                        className.startsWith("java.time.") ||
+                        className.equals("boolean") || className.equals("int") ||
+                        className.equals("long") || className.equals("double")) {
                     return Validity.ALLOWED;
                 }
                 return Validity.DENIED;

@@ -11,6 +11,7 @@ import com.dating.flairbit.utils.response.ResponseMakerUtility;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,6 +39,7 @@ public class UserMatchStateServiceImpl implements UserMatchStateService {
 
     @Override
     @Transactional
+    @CacheEvict(value = {"profileCache"}, key = "#email")
     public void createOrUpdateUserMatchState(Profile profile, UserMatchStateDTO request) {
         if (Objects.isNull(profile)) throw new BadRequestException("Profile, request, or intent cannot be null.");
         if (ObjectUtils.allNull(request)) throw new BadRequestException("user match state payload cannot be empty.");
