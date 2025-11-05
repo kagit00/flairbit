@@ -42,4 +42,24 @@
             CREATE INDEX idx_media_files_id ON media_files(id);
         </sql>
     </changeSet>
+
+    <changeSet id="20250502-04-add-future-partitions" author="grok">
+        <sql dbms="postgresql">
+            CREATE TABLE media_files_y2025m08 PARTITION OF media_files
+            FOR VALUES FROM ('2025-08-01') TO ('2025-09-01');
+
+            CREATE TABLE media_files_y2025m09 PARTITION OF media_files
+            FOR VALUES FROM ('2025-09-01') TO ('2025-10-01');
+
+            CREATE TABLE media_files_y2025m10 PARTITION OF media_files
+            FOR VALUES FROM ('2025-10-01') TO ('2025-11-01');
+
+            CREATE TABLE media_files_y2025m11 PARTITION OF media_files
+            FOR VALUES FROM ('2025-11-01') TO ('2025-12-01');
+
+            CREATE TABLE media_files_y2025m12 PARTITION OF media_files
+            FOR VALUES FROM ('2025-12-01') TO ('2026-01-01');
+        </sql>
+    </changeSet>
+
 </databaseChangeLog>

@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <!-- ============================================================= -->
+    <!-- 1. chat_sessions – profile-to-profile session (UUID FK)     -->
+    <!-- ============================================================= -->
+    <changeSet id="20251102-chat-session--" author="kaustav">
+        <createTable tableName="chat_sessions">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+
+            <!-- Two participants – order is canonicalised in the app -->
+            <column name="profile1_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="profile2_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- Intent is required for multi-intent profiles -->
+            <column name="intent" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE"
+                    defaultValueComputed="CURRENT_TIMESTAMP"/>
+        </createTable>
+
+        <!-- One unique session per (profile1, profile2, intent) -->
+        <addUniqueConstraint tableName="chat_sessions"
+                             columnNames="profile1_id, profile2_id, intent"
+                             constraintName="uq_chat_sessions_participants_intent"/>
+
+        <!-- FKs to profiles -->
+        <addForeignKeyConstraint baseTableName="chat_sessions"
+                                 baseColumnNames="profile1_id"
+                                 referencedTableName="profiles"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_chat_sessions_profile1"/>
+        <addForeignKeyConstraint baseTableName="chat_sessions"
+                                 baseColumnNames="profile2_id"
+                                 referencedTableName="profiles"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_chat_sessions_profile2"/>
+
+        <!-- Index for fast look-ups by participants + intent -->
+        <createIndex indexName="idx_chat_sessions_participants_intent"
+                     tableName="chat_sessions" unique="true">
+            <column name="profile1_id"/>
+            <column name="profile2_id"/>
+            <column name="intent"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ============================================================= -->
+    <!-- 2. chat_messages – messages with delivery/read tracking    -->
+    <!-- ============================================================= -->
+    <changeSet id="20251102-chat-message--" author="kaustav">
+        <createTable tableName="chat_messages">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+
+            <column name="session_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="sender_profile_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="content" type="TEXT"/>
+
+            <column name="delivered" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="seen" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="sent_at" type="TIMESTAMP WITH TIME ZONE"
+                    defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- FK to chat_sessions -->
+        <addForeignKeyConstraint baseTableName="chat_messages"
+                                 baseColumnNames="session_id"
+                                 referencedTableName="chat_sessions"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_chat_msg_session"
+                                 onDelete="CASCADE"/>
+
+        <!-- FK to profiles (sender) -->
+        <addForeignKeyConstraint baseTableName="chat_messages"
+                                 baseColumnNames="sender_profile_id"
+                                 referencedTableName="profiles"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_chat_msg_sender_profile"
+                                 onDelete="CASCADE"/>
+
+        <!-- Index for fast pagination per session -->
+        <createIndex indexName="idx_chat_msg_session_sentat"
+                     tableName="chat_messages">
+            <column name="session_id"/>
+            <column name="sent_at"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ============================================================= -->
+    <!-- 3. Safety net – re-create FK if it got lost (idempotent)    -->
+    <!-- ============================================================= -->
+    <changeSet id="20251102-ensure-fk-chat-msg-session--" author="kaustav">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <foreignKeyConstraintExists foreignKeyName="fk_chat_msg_session"/>
+            </not>
+        </preConditions>
+
+        <addForeignKeyConstraint baseTableName="chat_messages"
+                                 baseColumnNames="session_id"
+                                 referencedTableName="chat_sessions"
+                                 referencedColumnNames="id"
+                                 constraintName="fk_chat_msg_session"
+                                 onDelete="CASCADE"/>
+    </changeSet>
+
+    <!-- ============================================================= -->
+    <!-- 4. Optional: add intent column if you ever need to back-fill -->
+    <!-- ============================================================= -->
+    <changeSet id="20251102-add-intent-if-missing--" author="kaustav">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="chat_sessions" columnName="intent"/>
+            </not>
+        </preConditions>
+
+        <addColumn tableName="chat_sessions">
+            <column name="intent" type="VARCHAR(50)" defaultValue="DATING">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <!-- Re-create unique constraint to include intent -->
+        <dropUniqueConstraint tableName="chat_sessions"
+                              constraintName="uq_chat_sessions_participants_intent"/>
+        <addUniqueConstraint tableName="chat_sessions"
+                             columnNames="profile1_id, profile2_id, intent"
+                             constraintName="uq_chat_sessions_participants_intent"/>
+    </changeSet>
+
+    <!-- ============================================================= -->
+    <!-- 5. Add client_msg_id for idempotent message sends           -->
+    <!-- ============================================================= -->
+    <changeSet id="20251104-add-client-msg-id--" author="kaustav">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="chat_messages" columnName="client_msg_id"/>
+            </not>
+        </preConditions>
+
+        <addColumn tableName="chat_messages">
+            <column name="client_msg_id" type="UUID">
+                <constraints unique="true" nullable="true"/>
+            </column>
+        </addColumn>
+
+        <createIndex tableName="chat_messages"
+                     indexName="idx_chat_msg_client_msg_id"
+                     unique="true">
+            <column name="client_msg_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ============================================================= -->
+    <!-- 6. Create outbox table for zero-loss message publishing    -->
+    <!-- ============================================================= -->
+    <changeSet id="20251104-create-chat-message-outbox--" author="kaustav">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="chat_message_outbox"/>
+            </not>
+        </preConditions>
+
+        <createTable tableName="chat_message_outbox">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+
+            <column name="payload" type="JSONB">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="destination" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE"
+                    defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="sent_at" type="TIMESTAMP WITH TIME ZONE"/>
+
+            <column name="retry_count" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- Index for fast polling of pending messages -->
+        <createIndex tableName="chat_message_outbox"
+                     indexName="idx_outbox_pending"
+                     unique="false">
+            <column name="sent_at"/>
+            <column name="created_at"/>
+        </createIndex>
+
+        <!-- Optional: partial index for unsent messages (PostgreSQL) -->
+        <sql>
+            CREATE INDEX IF NOT EXISTS idx_outbox_unsent
+            ON chat_message_outbox (created_at)
+            WHERE sent_at IS NULL;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

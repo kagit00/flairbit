@@ -7,8 +7,8 @@ import java.util.List;
 import java.util.UUID;
 
 public interface MatchRequestService {
-    MatchRequest send(UUID fromUserId, UUID toUserId, UUID reelId);
-    void respond(UUID requestId, MatchRequestStatus newStatus);
-    List<MatchRequest> getSentRequests(UUID userId);
-    List<MatchRequest> getReceivedRequests(UUID userId);
+    void send(String from, String to, String intent);
+    void respond(String from, String to, String intent, MatchRequestStatus newStatus);
+    List<MatchRequest> getSentRequests(String email, String intent);
+    List<MatchRequest> getReceivedRequests(String email, String intent);
 }

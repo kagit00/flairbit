@@ -2,9 +2,7 @@ package com.dating.flairbit.repo;
 
 import com.dating.flairbit.dto.enums.ReelType;
 import com.dating.flairbit.models.*;
-import com.dating.flairbit.utils.basic.DefaultValuesPopulator;
 import org.springframework.dao.EmptyResultDataAccessException;
-import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -27,32 +25,45 @@ public class ProfileJDBCRepository {
 
     private static final String SQL_FIND_PROFILE_WITH_DETAILS =
             "SELECT " +
+                    // PROFILE
                     "p.id as p_id, p.user_id as p_user_id, p.display_name as p_display_name, p.headline as p_headline, " +
                     "p.bio as p_bio, p.created_at as p_created_at, p.updated_at as p_updated_at, p.version as p_version, " +
 
+                    // USER
+                    "u.id as u_id, u.username as u_username, u.email as u_email, " +
+                    "u.notification_enabled as u_notification_enabled, " +
+                    "u.created_at as u_created_at, u.updated_at as u_updated_at, u.version as u_version, " +
+
+                    // EDUCATION
                     "e.id as e_id, e.degree as e_degree, e.institution as e_institution, e.field_of_study as e_field_of_study, " +
                     "e.graduation_year as e_graduation_year, e.created_at as e_created_at, e.updated_at as e_updated_at, e.version as e_version, " +
 
+                    // PROFESSION
                     "pr.id as pr_id, pr.job_title as pr_job_title, pr.company as pr_company, pr.industry as pr_industry, " +
                     "pr.created_at as pr_created_at, pr.updated_at as pr_updated_at, pr.version as pr_version, " +
 
+                    // LOCATION
                     "l.id as l_id, l.city as l_city, l.country as l_country, l.latitude as l_latitude, l.longitude as l_longitude, " +
                     "l.created_at as l_created_at, l.updated_at as l_updated_at, l.version as l_version, " +
 
+                    // LIFESTYLE
                     "ls.id as ls_id, ls.drinks as ls_drinks, ls.smokes as ls_smokes, ls.religion as ls_religion, " +
                     "ls.created_at as ls_created_at, ls.updated_at as ls_updated_at, ls.version as ls_version, " +
 
-                    "pref.id as pref_id, pref.preferred_genders as pref_preferred_genders, pref.preferred_min_age as pref_preferred_min_age, pref.preferred_max_age as pref_preferred_max_age, " + // <-- ADDED HERE
-                    "pref.relationship_type as pref_relationship_type, pref.wants_kids as pref_wants_kids, " +
-                    "pref.open_to_long_distance as pref_open_to_long_distance, pref.created_at as pref_created_at, " +
-                    "pref.updated_at as pref_updated_at, pref.version as pref_version, " +
+                    // PREFERENCES
+                    "pref.id as pref_id, pref.preferred_genders as pref_preferred_genders, pref.preferred_min_age as pref_preferred_min_age, " +
+                    "pref.preferred_max_age as pref_preferred_max_age, pref.relationship_type as pref_relationship_type, " +
+                    "pref.wants_kids as pref_wants_kids, pref.open_to_long_distance as pref_open_to_long_distance, " +
+                    "pref.created_at as pref_created_at, pref.updated_at as pref_updated_at, pref.version as pref_version, " +
 
+                    // UMS
                     "ums.id as ums_id, ums.sent_to_matching_service as ums_sent_to_matching_service, ums.profile_complete as ums_profile_complete, " +
                     "ums.ready_for_matching as ums_ready_for_matching, ums.intent as ums_intent, ums.gender as ums_gender, " +
                     "ums.date_of_birth as ums_date_of_birth, ums.last_matched_at as ums_last_matched_at, ums.group_id as ums_group_id, " +
                     "ums.created_at as ums_created_at, ums.updated_at as ums_updated_at, ums.version as ums_version " +
 
                     "FROM profiles p " +
+                    "LEFT JOIN users u ON p.user_id = u.id " +
                     "LEFT JOIN educations e ON p.id = e.profile_id " +
                     "LEFT JOIN professions pr ON p.id = pr.profile_id " +
                     "LEFT JOIN locations l ON p.id = l.profile_id " +
@@ -60,6 +71,7 @@ public class ProfileJDBCRepository {
                     "LEFT JOIN preferences pref ON p.id = pref.profile_id " +
                     "LEFT JOIN user_match_states ums ON p.id = ums.profile_id " +
                     "WHERE p.user_id = ? AND ums.intent = ?";
+
 
     private static final String SQL_FIND_MEDIA_FILES_BY_PROFILE_ID =
             "SELECT id, original_file_name, file_type, reel_type, file_size, file_path, display_order, uploaded_at, version " +
@@ -103,6 +115,20 @@ public class ProfileJDBCRepository {
             profile.setCreatedAt(rs.getObject("p_created_at", LocalDateTime.class));
             profile.setUpdatedAt(rs.getObject("p_updated_at", LocalDateTime.class));
             profile.setVersion(rs.getLong("p_version"));
+
+            UUID userId = rs.getObject("u_id", UUID.class);
+            if (userId != null) {
+                User user = new User();
+                user.setId(userId);
+                user.setUsername(rs.getString("u_username"));
+                user.setEmail(rs.getString("u_email"));
+                user.setNotificationEnabled(rs.getBoolean("u_notification_enabled"));
+                user.setCreatedAt(rs.getObject("u_created_at", LocalDateTime.class));
+                user.setUpdatedAt(rs.getObject("u_updated_at", LocalDateTime.class));
+                user.setVersion(rs.getLong("u_version"));
+
+                profile.setUser(user);
+            }
 
             UUID educationId = rs.getObject("e_id", UUID.class);
             if (educationId != null) {

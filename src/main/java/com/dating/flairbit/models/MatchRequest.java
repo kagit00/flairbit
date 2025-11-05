@@ -13,7 +13,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "match_requests", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_match_request_from_to_reel", columnNames = {"from_user_id", "to_user_id", "reel_id"})
+        @UniqueConstraint(name = "uk_match_request_from_to", columnNames = {"from_profile_id", "to_profile_id", "group_id"})
 })
 @Data
 @NoArgsConstructor
@@ -28,23 +28,22 @@ public class MatchRequest implements Serializable {
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "from_user_id", nullable = false)
+    @JoinColumn(name = "from_profile_id", nullable = false)
     @NotNull
-    private User fromUser;
+    private Profile from;
+
+    @NotNull
+    private String groupId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "to_user_id", nullable = false)
+    @JoinColumn(name = "to_profile_id", nullable = false)
     @NotNull
-    private User toUser;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "reel_id", nullable = false)
-    @NotNull
-    private MediaFile reel;
+    private Profile to;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     @NotNull
+    @Builder.Default
     private MatchRequestStatus status = MatchRequestStatus.PENDING;
 
     @CreationTimestamp

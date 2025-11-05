@@ -22,4 +22,5 @@
     <include file="match-suggestions.xml" relativeToChangelogFile="true"/>
     <include file="match_requests.xml" relativeToChangelogFile="true"/>
     <include file="optimizations.xml" relativeToChangelogFile="true"/>
+    <include file="chats.xml" relativeToChangelogFile="true"/>
 </databaseChangeLog>

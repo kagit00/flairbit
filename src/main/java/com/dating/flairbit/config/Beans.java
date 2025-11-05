@@ -3,6 +3,7 @@ package com.dating.flairbit.config;
 import com.dating.flairbit.dto.MatchSuggestionDTO;
 import com.dating.flairbit.config.factory.MatchSuggestionResponseFactory;
 import com.dating.flairbit.config.factory.ResponseFactory;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -110,11 +111,12 @@ public class Beans {
         return executor;
     }
 
-    @Bean
+    @Bean(name = "objectMapper")
     public ObjectMapper objectMapper() {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         return mapper;
     }
 

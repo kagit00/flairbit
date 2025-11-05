@@ -136,6 +136,7 @@ public class CacheConfig {
                 .withCacheConfiguration("matchSuggestionsCache", redisConfig.entryTtl(Duration.ofMinutes(10)))
                 .withCacheConfiguration("groupCache", redisConfig.entryTtl(Duration.ofMinutes(120)))
                 .withCacheConfiguration("profileCache", redisConfig.entryTtl(Duration.ofMinutes(120)))
+                .withCacheConfiguration("matchRequestsCache", redisConfig.entryTtl(Duration.ofMinutes(120)))
                 .build();
 
         CompositeCacheManager compositeCacheManager = new CompositeCacheManager(caffeineCacheManager, redisCacheManager);

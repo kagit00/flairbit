@@ -11,6 +11,6 @@ import java.util.List;
 @ConfigurationProperties(prefix = "media.storage")
 public class MediaStorageProperties {
     private String uploadFolder = "uploads/";
-    private long maxFileSize = 10 * 1024 * 1024; // 10MB default
+    private long maxFileSize = 50 * 1024 * 1024;
     private List<String> allowedTypes = List.of("image/jpeg", "image/png", "video/mp4");
 }

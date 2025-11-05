@@ -74,7 +74,7 @@ public final class ResponseMakerUtility {
         }
 
         return ProfileResponse.builder()
-                .bio(profile.getBio()).userEmail(email)
+                .bio(profile.getBio()).userEmail(email).id(profile.getId())
                 .displayName(profile.getDisplayName()).headline(profile.getHeadline())
                 .profession(profile.getProfession() == null? ProfessionResponse.builder().build() : buildProfession(profile.getProfession()))
                 .education(profile.getEducation() == null? EducationResponse.builder().build() : buildEducation(profile.getEducation()))

@@ -47,8 +47,10 @@ public class SecurityConfig {
                     return config;
                 }))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/ws/**", "/ws-direct/**").hasAnyAuthority("USER")
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/users/**").hasAnyAuthority("USER", "ADMIN")
+                        .requestMatchers("/api/**").hasAnyAuthority("USER")
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(unauthorizedHandler))

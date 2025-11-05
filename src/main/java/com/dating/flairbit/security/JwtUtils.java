@@ -64,7 +64,7 @@ public class JwtUtils {
     }
 
     private String doGenerateToken(Map<String, Object> claims, String username) {
-        long expirationTimeMillis = 1000 * 60 * 60;  // 1 hour
+        long expirationTimeMillis = 1000 * 60 * 60;
         Date expirationDate = new Date(System.currentTimeMillis() + expirationTimeMillis);
 
         return Jwts.builder()

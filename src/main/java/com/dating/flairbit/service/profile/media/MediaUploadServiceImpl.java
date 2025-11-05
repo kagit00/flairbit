@@ -33,27 +33,21 @@ public class MediaUploadServiceImpl implements MediaUploadService{
 
     @Override
     @CacheEvict(value = {"profileCache"}, key = "#email")
-    public void processUploading(String email, MultipartFile file, MediaUploadResponse response, ReelType reelType, String intent) {
+    public void processUploading(String email, MultipartFile file, MediaUploadResponse response,
+                                 ReelType reelType, String intent) {
+
         User user = userService.getUserByEmail(email);
         Profile profile = profileProcessor.getProfile(user, intent);
 
         if (Objects.isNull(profile)) throw new BadRequestException("No profile found with intent");
-
         FileValidationUtility.validateFile(file, reelType, maxFileSize);
 
-        MediaFile mediaFile = mediaFileRepository.findByProfileAndReelType(profile, reelType)
-                .map(existing -> updateExistingMedia(existing, file, response))
-                .orElseGet(() -> createNewMedia(file, response, profile, reelType));
+        if (mediaFileRepository.countByProfile(profile) >= maxReels)
+            throw new BadRequestException("Maximum " + maxReels + " reels allowed");
+
+        MediaFile mediaFile = createNewMedia(file, response, profile, reelType);
 
         mediaFileRepository.save(mediaFile);
-    }
-
-    private MediaFile updateExistingMedia(MediaFile existing, MultipartFile file, MediaUploadResponse response) {
-        existing.setOriginalFileName(file.getOriginalFilename());
-        existing.setFileType(file.getContentType());
-        existing.setFileSize(file.getSize());
-        existing.setFilePath(response.getSecureUrl());
-        return existing;
     }
 
     private MediaFile createNewMedia(MultipartFile file, MediaUploadResponse response, Profile profile, ReelType reelType) {

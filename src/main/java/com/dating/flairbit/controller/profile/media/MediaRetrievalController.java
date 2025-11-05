@@ -41,26 +41,19 @@ public class MediaRetrievalController {
             @RequestParam(defaultValue = "10") int limit,
             @RequestParam(required = false) String cursor) {
 
-        User user = userService.getUserByEmail(email); // Keep this synchronous as it’s a simple lookup
+        User user = userService.getUserByEmail(email);
         LocalDateTime cursorDateTime = (!Objects.isNull(cursor))
                 ? LocalDateTime.parse(cursor)
                 : DefaultValuesPopulator.getCurrentTimestamp();
 
         CompletableFuture<List<MediaFileResponse>> reelsFuture;
         try {
-            switch (ReelsSectionType.valueOf(sectionType.toUpperCase())) {
-                case FOR_YOU:
-                    reelsFuture = mediaRetrievalService.getMatchedUsersReels(user.getUsername(), cursorDateTime, limit, intent);
-                    break;
-                case MOST_LIKED:
-                    reelsFuture = mediaRetrievalService.getMostLikedReels(cursorDateTime, limit, intent);
-                    break;
-                case MOST_VIEWED:
-                    reelsFuture = mediaRetrievalService.getMostViewedReels(cursorDateTime, limit, intent);
-                    break;
-                default:
-                    reelsFuture = CompletableFuture.completedFuture(Collections.emptyList());
-            }
+            reelsFuture = switch (ReelsSectionType.valueOf(sectionType.toUpperCase())) {
+                case FOR_YOU ->
+                        mediaRetrievalService.getMatchedUsersReels(user.getUsername(), cursorDateTime, limit, intent);
+                case MOST_LIKED -> mediaRetrievalService.getMostLikedReels(cursorDateTime, limit, intent);
+                case MOST_VIEWED -> mediaRetrievalService.getMostViewedReels(cursorDateTime, limit, intent);
+            };
         } catch (IllegalArgumentException e) {
             // Handle invalid sectionType
             return CompletableFuture.completedFuture(
@@ -69,7 +62,7 @@ public class MediaRetrievalController {
         }
 
         return reelsFuture
-                .thenApply(reels -> ResponseEntity.ok(reels))
+                .thenApply(ResponseEntity::ok)
                 .exceptionally(throwable -> {
                     log.error("Error retrieving reels for email={}, sectionType={}: {}", email, sectionType, throwable.getMessage());
                     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();

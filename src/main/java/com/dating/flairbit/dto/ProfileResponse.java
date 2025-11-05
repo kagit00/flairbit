@@ -17,6 +17,7 @@ import java.util.UUID;
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ProfileResponse {
+    private UUID id;
     private String userEmail;
     private String displayName;
     private String headline;
