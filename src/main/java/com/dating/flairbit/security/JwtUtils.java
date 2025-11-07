@@ -1,9 +1,6 @@
 package com.dating.flairbit.security;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import org.springframework.security.core.GrantedAuthority;
+
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
@@ -11,73 +8,79 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
+
+
+import java.util.*;
 
 @Service
 public class JwtUtils {
 
-    public static final long JWT_TOKEN_VALIDITY = 5 * 60 * 60L;
+    private final RSAKey flairbitKeyPair;
 
-    private String secret = "afafasfafafasfasfasfafacasdasfasxASFACASDFACASDFASFASFDAFASFASDAADSCSDFADCVSGCFVADXCcadwavfsfarvf";
-
-
-    public String getUsernameFromToken(String token) {
-        return getClaimFromToken(token, Claims::getSubject);
+    public JwtUtils(RSAKey flairbitKeyPair) {
+        this.flairbitKeyPair = flairbitKeyPair;
     }
-
-    public String generateToken(String username) {
-        return Jwts.builder()
-                .setSubject(username)
-                .setIssuedAt(new Date())
-                .setExpiration(new Date((new Date()).getTime() + 3600000))
-                .signWith(SignatureAlgorithm.HS512, secret)
-                .compact();
-    }
-
-    public Date getExpirationDateFromToken(String token) {
-        return getClaimFromToken(token, Claims::getExpiration);
-    }
-
-
-    public <T> T getClaimFromToken(String token, Function<Claims, T> claimsResolver) {
-        final Claims claims = getAllClaimsFromToken(token);
-        return claimsResolver.apply(claims);
-    }
-
-    private Claims getAllClaimsFromToken(String token) {
-        return Jwts.parser().setSigningKey(secret).parseClaimsJws(token).getBody();
-    }
-
-    private Boolean isTokenExpired(String token) {
-        final Date expiration = getExpirationDateFromToken(token);
-        return expiration.before(new Date());
-    }
-
 
     public String generateToken(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
-        Set<String> roles = userDetails.getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(Collectors.toSet());
+        Set<String> roles = new HashSet<>();
+        userDetails.getAuthorities().forEach(a -> roles.add(a.getAuthority()));
         claims.put("roles", roles);
+
         return doGenerateToken(claims, userDetails.getUsername());
     }
 
-    private String doGenerateToken(Map<String, Object> claims, String username) {
-        long expirationTimeMillis = 1000 * 60 * 60;
-        Date expirationDate = new Date(System.currentTimeMillis() + expirationTimeMillis);
+    private String doGenerateToken(Map<String, Object> claims, String subject) {
+        try {
+            long now = System.currentTimeMillis();
+            Date issueTime = new Date(now);
+            Date expirationTime = new Date(now + 3600000); // 1 hour
 
-        return Jwts.builder()
-                .setClaims(claims)
-                .setSubject(username)
-                .setIssuedAt(new Date())
-                .setExpiration(expirationDate)
-                .signWith(SignatureAlgorithm.HS256, secret)
-                .compact();
+            JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
+                    .subject(subject)
+                    .issuer("FlairBit")
+                    .issueTime(issueTime)
+                    .expirationTime(expirationTime)
+                    .claim("roles", claims.get("roles"))
+                    .build();
+
+            SignedJWT signedJWT = new SignedJWT(
+                    new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(flairbitKeyPair.getKeyID()).build(),
+                    claimsSet
+            );
+
+            signedJWT.sign(new RSASSASigner(flairbitKeyPair.toPrivateKey()));
+            return signedJWT.serialize();
+        } catch (Exception e) {
+            throw new RuntimeException("JWT signing failed", e);
+        }
     }
 
-    public Boolean validateToken(String token, UserDetails userDetails) {
-        final String username = getUsernameFromToken(token);
-        return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
+    public String getUsernameFromToken(String token) {
+        try {
+            SignedJWT jwt = SignedJWT.parse(token);
+            return jwt.getJWTClaimsSet().getSubject();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public boolean validateToken(String token, UserDetails userDetails) {
+        try {
+            SignedJWT jwt = SignedJWT.parse(token);
+            jwt.verify(new com.nimbusds.jose.crypto.RSASSAVerifier(flairbitKeyPair.toRSAPublicKey()));
+            String username = jwt.getJWTClaimsSet().getSubject();
+            Date expiration = jwt.getJWTClaimsSet().getExpirationTime();
+            return username.equals(userDetails.getUsername()) && expiration.after(new Date());
+        } catch (Exception e) {
+            return false;
+        }
     }
 }
