@@ -20,12 +20,12 @@ Supports high engagement, better UX, and personalized matchmaking.
 
 ```mermaid
 graph TD
-    A[Mobile App (iOS/Android)] --> B[Progressive Profiling Service]
+    A["Mobile App<br/>iOS & Android"] --> B[Progressive Profiling Service]
     C[Web Dashboard] --> B
     D[Auth Service] --> B
     E[Matching Engine] --> B
     F[Analytics Pipeline] --> B
-    G[Cloud Storage (S3/GCS)] <---> B
+    G["Cloud Storage<br/>S3 or GCS"] <---> B
     H[Notification Service] <---> B
 
     B --> I[(PostgreSQL DB)]
@@ -34,6 +34,7 @@ graph TD
     style B fill:#2196F3,stroke:#1976D2,color:white
     style I fill:#4CAF50,stroke:#388E3C,color:white
     style J fill:#FF9800,stroke:#F57C00,color:white
+
 ```
 
 ### External Systems
@@ -109,11 +110,11 @@ All APIs follow pattern:
 | `/media/user-reels` | `GET` | Get user’s reels |
 | `/media/matched-users-reels` | `GET` | Feed of other users’ reels |
 
-> ✅ All support `intent` parameter → enables multi-profile strategy
+> All support `intent` parameter → enables multi-profile strategy
 
 ---
 
-## 6. 🗺️ **Data Model Overview**
+## 6. **Data Model Overview**
 
 ### Key Entities
 | Entity | Cardinality | Notes |
@@ -189,12 +190,12 @@ All APIs follow pattern:
 ```mermaid
 graph LR
     A[Client] --> B[API Gateway]
-    B --> C[Progressive Profiling Service (K8s Pod)]
+    B --> C["Progressive Profiling Service<br/>K8s Pod"]
     C --> D[Redis Cluster]
     C --> E[PostgreSQL RDS]
-    C --> F[Cloud Storage (S3)]
+    C --> F["Cloud Storage<br/>S3"]
 
-    subgraph "AWS/GCP"
+    subgraph AWS_or_GCP [AWS / GCP]
         D
         E
         F
