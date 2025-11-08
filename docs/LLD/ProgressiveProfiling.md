@@ -82,12 +82,15 @@ Global Config:
 ## 3. **Component Architecture Diagram**
 
 ```mermaid
-graph TD
-    subgraph Client
+flowchart TB
+    %% === CLIENT LAYER ===
+    subgraph CLIENT [👤 Client Layer]
         A[Mobile / Web App]
     end
 
-    subgraph API_Layer [API Layer]
+    %% === API LAYER ===
+    subgraph API [ API Layer]
+        direction TB
         B[EducationController]
         C[LifestyleController]
         D[LocationController]
@@ -98,7 +101,9 @@ graph TD
         I[MediaRetrievalController]
     end
 
-    subgraph Service_Layer [Service Layer]
+    %% === SERVICE LAYER ===
+    subgraph SERVICE [Service Layer]
+        direction TB
         J[EducationUpdateService]
         K[LifeStyleUpdateService]
         L[LocationUpdateService]
@@ -109,46 +114,62 @@ graph TD
         Q[MediaRetrievalService]
     end
 
-    subgraph Infrastructure
+    %% === INFRASTRUCTURE LAYER ===
+    subgraph INFRA [Infrastructure Layer]
+        direction TB
         R[ProfileProcessor] --> S[JdbcTemplate]
         T[GroupConfigService] --> U[GroupConfigRepository]
         V[UserMatchStateService] --> W[UserMatchStateRepository]
         X[ThirdPartyConnectorDispatcher] --> Y[Cloud Storage Connector]
     end
 
-    subgraph Data_Store [Data Store]
-        S --> Z[PostgreSQL DB]
+    %% === DATA STORE ===
+    subgraph DATA [Data Store]
+        direction TB
+        S --> Z[(PostgreSQL DB)]
         U --> Z
         W --> Z
         Y --> AA["Cloud Storage<br/>S3 or GCS"]
     end
 
-    A --> B
-    A --> C
-    A --> H
-    A --> I
+    %% === FLOW CONNECTIONS ===
+    %% Client → API
+    A --> B & C & H & I
 
+    %% API → Service
     B --> J
     C --> K
+    D --> L
+    E --> M
+    F --> N
+    G --> O
     H --> P
     I --> Q
 
-    J --> R
-    K --> R
-    P --> R
-
-    J --> T
-    P --> T
-
+    %% Service → Infrastructure
+    J & K & P --> R
+    J & P --> T
     O --> V
     V --> R
 
+    %% Infrastructure → Data Store
     R --> Z
     T --> U
 
-    style Z fill:#4CAF50,stroke:#388E3C,color:white
-    style AA fill:#2196F3,stroke:#1976D2,color:white
+    %% === STYLING ===
+    %% Color scheme for layers
+    classDef client fill:#FFD54F,color:#000,stroke:#F9A825;
+    classDef api fill:#64B5F6,color:white,stroke:#1976D2;
+    classDef service fill:#81C784,color:white,stroke:#388E3C;
+    classDef infra fill:#BA68C8,color:white,stroke:#7B1FA2;
+    classDef data fill:#A1887F,color:white,stroke:#5D4037;
 
+    %% Assign styles
+    class A client;
+    class B,C,D,E,F,G,H,I api;
+    class J,K,L,M,N,O,P,Q service;
+    class R,S,T,U,V,W,X,Y infra;
+    class Z,AA data;
 ```
 
 ---
