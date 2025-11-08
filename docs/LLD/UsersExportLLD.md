@@ -3,7 +3,7 @@
 ---
 
 
-```markdown
+
 # Users Export Module – Low-Level Design (LLD)
 
 ## 1.  Overview
@@ -363,7 +363,6 @@ This module enables **reliable, scalable, and type-aware user exports** for down
 It is production-ready and aligns with enterprise integration patterns.
 
 ---
-```
 
 ---
 
