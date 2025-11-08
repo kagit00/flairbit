@@ -83,11 +83,11 @@ Global Config:
 
 ```mermaid
 graph TD
-    subgraph "Client"
-        A[Mobile/Web App]
+    subgraph Client
+        A[Mobile / Web App]
     end
 
-    subgraph "API Layer"
+    subgraph API_Layer [API Layer]
         B[EducationController]
         C[LifestyleController]
         D[LocationController]
@@ -98,7 +98,7 @@ graph TD
         I[MediaRetrievalController]
     end
 
-    subgraph "Service Layer"
+    subgraph Service_Layer [Service Layer]
         J[EducationUpdateService]
         K[LifeStyleUpdateService]
         L[LocationUpdateService]
@@ -109,18 +109,18 @@ graph TD
         Q[MediaRetrievalService]
     end
 
-    subgraph "Infrastructure"
+    subgraph Infrastructure
         R[ProfileProcessor] --> S[JdbcTemplate]
         T[GroupConfigService] --> U[GroupConfigRepository]
         V[UserMatchStateService] --> W[UserMatchStateRepository]
         X[ThirdPartyConnectorDispatcher] --> Y[Cloud Storage Connector]
     end
 
-    subgraph "Data Store"
+    subgraph Data_Store [Data Store]
         S --> Z[PostgreSQL DB]
         U --> Z
         W --> Z
-        Y --> AA[Cloud Storage (S3/GCS)]
+        Y --> AA["Cloud Storage<br/>S3 or GCS"]
     end
 
     A --> B
@@ -148,6 +148,7 @@ graph TD
 
     style Z fill:#4CAF50,stroke:#388E3C,color:white
     style AA fill:#2196F3,stroke:#1976D2,color:white
+
 ```
 
 ---
