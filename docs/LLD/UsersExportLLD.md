@@ -1,338 +1,391 @@
-# Low-Level Design (LLD) for Users Export Module
+# 📄 **Low-Level Design (LLD): Users Export Module**
 
 ---
 
-## Table of Contents
-1. [Overview](#-overview)
-2. [Sequence Diagrams](#-sequence-diagrams)
-    - Scheduled Export Trigger
-    - Cost-Based Group Processing
-    - Non-Cost-Based Group Processing
-3. [Class Diagram](#-class-diagram)
-4. [Component Responsibilities](#-component-responsibilities)
-5. [Error Handling & Observability](#-error-handling--observability)
-6. [Concurrency & Async Flow](#-concurrency--async-flow)
-7. [Configuration & Tuning](#-configuration--tuning)
-8. [Assumptions & Limitations](#-assumptions--limitations)
+
+```markdown
+# Users Export Module – Low-Level Design (LLD)
+
+## 1.  Overview
+
+The **Users Export Module** periodically exports eligible users from the dating platform to downstream systems (e.g., FlairBit matching engine). It supports two types of export logic:
+
+- **Cost-Based**: Full CSV export with enriched profile data (name, bio, preferences, etc.)
+- **Non-Cost-Based**: Lightweight export of only usernames (reference IDs)
+
+Exports are scheduled daily, processed asynchronously per group, and sent via message queue after CSV generation and upload to MinIO.
 
 ---
 
-## 1. Overview
+## 2. System Components
 
-The **Users Export Module** is responsible for periodically exporting user data grouped by matching configurations to an external system via Kafka (FlairBit). The export is scheduled daily at 11:20 PM IST and processes all active groups in parallel.
+### 🔹 `UsersExportScheduler` (Scheduler)
+- Triggers daily export job at `23:20 IST`
+- Fetches all active `MatchingGroupConfig`s
+- Launches async processing for each group
+- Uses `CompletableFuture.allOf().join()` to wait
 
-Key characteristics:
-- **Batched processing** (configurable size, default=1000)
-- **Async execution** using `@Async` executor
-- **Retry support** via Spring RetryTemplate
-- **Metrics instrumentation** with Micrometer (`MeterRegistry`)
-- **Conditional activation** — disabled in test profile
-- **Two export strategies**: Cost-Based (CSV upload to MinIO + metadata Kafka message) and Non-Cost-Based (username list via Kafka)
+### 🔹 `UsersExportService` (Orchestrator)
+- Async service (`@Async`)
+- Wraps processing in retry logic
+- Measures metrics via `MeterRegistry`
+- Returns `CompletableFuture<Void>`
+
+### 🔹 `UsersExprtProcessor` (Batch Fetcher)
+- Fetches users via raw SQL from `userRepository`
+- Transforms to `UserExportDTO`
+- Delegates to appropriate processor by group type
+
+### 🔹 `CostBasedUsersExportProcessor`
+- Generates **CSV.gz** file with full user details
+- Uploads to MinIO via `MinioUploadService`
+- Sends message to Kafka/RabbitMQ with file URL
+
+### 🔹 `NonCostBasedUsersExportProcessor`
+- Extracts only `username` list
+- Sends directly as payload in message (no file)
+
+### 🔹 `UsersExportFormattingService`
+- Handles CSV formatting using `CsvExporter`
+- Defines field mappings via `UserFieldsExtractor`
+- Uploads to MinIO
+
+### 🔹 `MinioUploadService`
+- Uploads generated CSV files to object storage (MinIO/S3)
+
+### 🔹 `FlairBitProducer`
+- Sends messages to external system (e.g., Kafka topic `flairbit-users`)
 
 ---
 
-## 2. Sequence Diagrams
-
-### A. Scheduled Export Trigger
+## 3. Data Flow
 
 ```mermaid
-sequenceDiagram
-    participant Scheduler as UsersExportScheduler
-    participant Repo as MatchingGroupConfigRepository
-    participant Service as UsersExportService
-    participant Processor as UsersExprtProcessor
+flowchart TD
+    A[Daily Cron Job] --> B[UsersExportScheduler]
+    B --> C[Fetch All GroupConfigs]
+    C --> D{For Each Group}
+    D --> E[UsersExportService::processGroup]
+    E --> F[UsersExprtProcessor::processGroup]
+    F --> G[UserRepository.findByGroupIdAndSentToMatchingServiceFalse]
+    G --> H[Transform to UserExportDTO]
+    H --> I{Group Type?}
+    I -->|COST_BASED| J[CostBasedUsersExportProcessor]
+    I -->|NON_COST_BASED| K[NonCostBasedUsersExportProcessor]
 
-    Scheduler->>Repo: findAll()
-    Repo-->>Scheduler: List<MatchingGroupConfig>
-    loop For each group config
-        Scheduler->>Service: processGroup(groupId, groupType, domainId)
-        activate Service
-        Service->>Processor: processGroup(...)
-        activate Processor
-        Processor->>Repo: findByGroupIdAndSentToMatchingServiceFalse(groupId)
-        Repo-->>Processor: List<Object[]>
-        Processor->>Utility: transformToUserExportDTO(raw)
-        Processor->>Processor: processBatchForGroupType(...)
-        deactivate Processor
-        Service-->>Scheduler: CompletableFuture<Void>
-        deactivate Service
-    end
-    Scheduler->>Scheduler: CompletableFuture.allOf(futures).join()
+    J --> L[Generate CSV + GZIP]
+    L --> M[Upload to MinIO]
+    M --> N[Send Message with File URL]
+
+    K --> O[Extract Usernames Only]
+    O --> P[Send Message with Username List]
+
+    N --> Q[Downstream: Matching Engine]
+    P --> Q
 ```
-
-> *All group exports are processed concurrently via CompletableFuture. Errors are logged but do not halt other exports.*
 
 ---
 
-### B. Cost-Based Group Processing
-
-```mermaid
-sequenceDiagram
-    participant Processor as UsersExprtProcessor
-    participant CostProcessor as CostBasedUsersExportProcessor
-    participant FormattingService as UsersExportFormattingService
-    participant Minio as MinioUploadService
-    participant Kafka as FlairBitProducer
-
-    Processor->>CostProcessor: processBatch(groupId, users, domainId)
-    activate CostProcessor
-    CostProcessor->>FormattingService: exportCsv(users, groupId, domainId)
-    activate FormattingService
-    FormattingService->>FormattingService: filter + map to UserView
-    FormattingService->>FormattingService: create temp file path
-    FormattingService->>FormattingService: write CSV + GZIP
-    FormattingService->>Minio: upload(localPath, objectName)
-    activate Minio
-    Minio->>Minio: check bucket exists → create if needed
-    Minio->>Minio: uploadObject(...)
-    Minio-->>FormattingService: void
-    deactivate Minio
-    FormattingService-->>CostProcessor: ExportedFile
-    deactivate FormattingService
-    CostProcessor->>Kafka: sendMessage(topic, key, payload)
-    activate Kafka
-    Kafka->>Kafka: kafkaTemplate.send(...)
-    Kafka->>Kafka: async callback on success/failure
-    Kafka->>Kafka: sendToDlq(...) if failed
-    Kafka-->>CostProcessor: void
-    deactivate Kafka
-    CostProcessor-->>Processor: CompletableFuture<Void>
-    deactivate CostProcessor
-```
-
->  *Entire CSV generation and upload is async and retried. Kafka send is fire-and-forget with DLQ fallback.*
-
----
-
-### C. Non-Cost-Based Group Processing
-
-```mermaid
-sequenceDiagram
-    participant Processor as UsersExprtProcessor
-    participant NonCostProcessor as NonCostBasedUsersExportProcessor
-    participant FormattingService as UsersExportFormattingService
-    participant Kafka as FlairBitProducer
-
-    Processor->>NonCostProcessor: processBatch(groupId, users, domainId)
-    activate NonCostProcessor
-    NonCostProcessor->>FormattingService: extractEligibleUsernames(users, groupId)
-    activate FormattingService
-    FormattingService-->>NonCostProcessor: List<String> usernames
-    deactivate FormattingService
-    alt usernames not empty
-        NonCostProcessor->>Kafka: sendMessage(topic, key, payload)
-        activate Kafka
-        Kafka->>Kafka: send async + DLQ on failure
-        Kafka-->>NonCostProcessor: void
-        deactivate Kafka
-    else empty
-        NonCostProcessor->>NonCostProcessor: log skip
-    end
-    NonCostProcessor-->>Processor: CompletableFuture<Void>
-    deactivate NonCostProcessor
-```
-
->  *No file upload involved. Only usernames are extracted and sent directly via Kafka.*
-
----
-
-## 3. Class Diagram
+## 4. Class Diagram (Simplified)
 
 ```mermaid
 classDiagram
-
     class UsersExportScheduler {
-        -MatchingGroupConfigRepository groupConfigRepository
-        -UsersExportService usersExportService
-        -String domainId
-        +validateDomainId()
-        +scheduledExportJob()
+        +@Scheduled scheduledExportJob()
     }
 
     class UsersExportService {
-        -UsersExprtProcessor usersExportProcessor
-        -RetryTemplate retryTemplate
-        -MeterRegistry meterRegistry
-        +processGroup(groupId, groupType, domainId) CompletableFuture~Void~
+        +processGroup(groupId, type, domainId): CompletableFuture~Void~
     }
 
     class UsersExprtProcessor {
-        -UserRepository userRepository
-        -CostBasedUsersExportProcessor costBasedUsersExportProcessor
-        -NonCostBasedUsersExportProcessor nonCostBasedUsersExportProcessor
-        -MeterRegistry meterRegistry
-        -int batchSize
-        +processGroup(groupId, groupType, domainId)
-        -processBatchForGroupType(...) CompletableFuture~Void~
+        +processGroup(groupId, type, domainId)
+        +processBatchForGroupType()
     }
 
     class CostBasedUsersExportProcessor {
-        -UsersExportFormattingService usersExportFormattingService
-        -FlairBitProducer flairBitProducer
-        -RetryTemplate retryTemplate
-        -MeterRegistry meterRegistry
-        +processBatch(groupId, batch, domainId) CompletableFuture~Void~
-        -isEmptyBatch(batch) boolean
+        +processBatch(groupId, users, domainId): CompletableFuture~Void~
     }
 
     class NonCostBasedUsersExportProcessor {
-        -UsersExportFormattingService userExportService
-        -FlairBitProducer flairBitProducer
-        +processBatch(groupId, batch, domainId) CompletableFuture~Void~
-        -isEmptyBatch(batch) boolean
+        +processBatch(groupId, users, domainId): CompletableFuture~Void~
     }
 
     class UsersExportFormattingService {
-        <<interface>>
-        +exportCsv(userDtos, groupId, domainId) CompletableFuture~ExportedFile~
-        +extractEligibleUsernames(userDtos, groupId) List~String~
-    }
-
-    class UsersExportFormattingServiceImpl {
-        -MeterRegistry meterRegistry
-        -RetryTemplate retryTemplate
-        -ThreadPoolTaskExecutor exportExecutor
-        -MinioUploadService minioUploadService
-        -String baseDir, bucketName, batchSize
-        +exportCsv(...) CompletableFuture~ExportedFile~
-        +extractEligibleUsernames(...) List~String~
-        -createFilePath(...) Path
+        +exportCsv(users, groupId, domainId): CompletableFuture~ExportedFile~
+        +extractEligibleUsernames(): List~String~
     }
 
     class MinioUploadService {
-        -MinioClient minioClient
-        -String bucketName
         +upload(localPath, objectName)
     }
 
     class FlairBitProducer {
-        -KafkaTemplate~String, String~ kafkaTemplate
-        -Executor kafkaCallbackExecutor
         +sendMessage(topic, key, value)
-        -sendToDlq(key, value)
     }
 
-    UsersExportScheduler --> UsersExportService : uses
-    UsersExportService --> UsersExprtProcessor : delegates
-    UsersExprtProcessor --> CostBasedUsersExportProcessor : delegates if COST_BASED
-    UsersExprtProcessor --> NonCostBasedUsersExportProcessor : delegates if NON_COST_BASED
-    CostBasedUsersExportProcessor --> UsersExportFormattingService : generates CSV
-    NonCostBasedUsersExportProcessor --> UsersExportFormattingService : extracts usernames
-    UsersExportFormattingServiceImpl --> MinioUploadService : uploads file
-    CostBasedUsersExportProcessor --> FlairBitProducer : sends metadata
-    NonCostBasedUsersExportProcessor --> FlairBitProducer : sends refIds
+    class CsvExporter {
+        +exportToCsvString(entities, group, extractors): String
+        +mapEntityToCsvRow()
+    }
+
+    class UserFieldsExtractor {
+        +fieldExtractors(): List~FieldExtractor~
+        +record UserView(User, Profile)
+    }
+
+    UsersExportScheduler --> UsersExportService : Calls
+    UsersExportService --> UsersExprtProcessor : Delegates
+    UsersExprtProcessor --> CostBasedUsersExportProcessor : Conditional
+    UsersExprtProcessor --> NonCostBasedUsersExportProcessor : Conditional
+    CostBasedUsersExportProcessor --> UsersExportFormattingService : exportCsv()
+    UsersExportFormattingService --> MinioUploadService : upload()
+    UsersExportFormattingService --> CsvExporter : Generate CSV
+    CsvExporter --> UserFieldsExtractor : Field Mapping
+    CostBasedUsersExportProcessor --> FlairBitProducer : Send File Link
+    NonCostBasedUsersExportProcessor --> FlairBitProducer : Send Payload
 ```
 
 ---
 
-## 4. Component Responsibilities
+## 5. Sequence Diagram: Cost-Based Export
 
-| Component | Responsibility |
-|----------|----------------|
-| `UsersExportScheduler` | Triggers daily export job. Validates domain UUID. Fetches all group configs and schedules async exports. |
-| `UsersExportService` | Async entry point. Wraps processor in retry and metrics. Returns `CompletableFuture`. |
-| `UsersExprtProcessor` | Orchestrates export per group. Fetches raw user data, transforms to DTO, delegates to correct processor. |
-| `CostBasedUsersExportProcessor` | Generates gzipped CSV, uploads to MinIO, sends metadata payload to Kafka. |
-| `NonCostBasedUsersExportProcessor` | Extracts distinct usernames and sends directly to Kafka. |
-| `UsersExportFormattingService` | Interface for CSV generation and username extraction. Implemented by formatting service. |
-| `UsersExportFormattingServiceImpl` | Implements CSV writing, GZIP compression, local temp file creation, MinIO upload. |
-| `MinioUploadService` | Handles MinIO bucket existence check and file upload. |
-| `FlairBitProducer` | Asynchronously sends messages to Kafka with DLQ fallback on failure. |
+```mermaid
+sequenceDiagram
+    participant Scheduler
+    participant Service
+    participant Processor
+    participant FormatSvc
+    participant MinIO
+    participant Producer
+    participant Downstream
 
----
-
-## ⚠️ 5. Error Handling & Observability
-
-### Success Metrics
-- `users_export_duration{groupId, groupType}` — Duration of entire group export.
-- `users_export_group_duration{groupId, groupType}` — Time inside processor.
-- `users_export_batch_duration{groupId}` — Time to format/upload/send batch.
-- `users_export_csv_duration{groupId}` — Time to generate and upload CSV.
-- `users_export_batch_processed{groupId}` — Counter of users exported per batch.
-- `users_export_csv_processed{groupId}` — Counter of users written to CSV.
-
-### Failure Metrics
-- `users_export_failures{groupId, groupType}` — Export failed at service level.
-- `users_export_batch_failures{groupId, groupType}` — Batch-level failure.
-- `users_export_csv_failures{groupId}` — CSV generation/upload failed.
-- `users_export_invalid_group_type{groupId, groupType}` — Unknown group type.
-
-### Logging
-- INFO: Start/end of group/batch processing, upload success, Kafka send success.
-- WARN: Unknown group type.
-- ERROR: Any exception during export, Kafka send failure, CSV generation error.
-
-### Retry
-- Wrapped around `usersExportProcessor.processGroup(...)` and `minioUpload`/`csv generation`.
-- Uses Spring `RetryTemplate` — configurable externally.
-
-### DLQ
-- If Kafka send fails → message is resent to `flairbit-dlq` topic asynchronously.
+    Scheduler->>Service: processGroup("grp1", "COST_BASED", domainId)
+    Service->>Processor: processGroup("grp1", ...)
+    Processor->>DB: findByGroupIdAndSentToMatchingServiceFalse
+    DB-->>Processor: Raw Object[] list
+    Processor->>Processor: transformToUserExportDTO()
+    Processor->>FormatSvc: exportCsv(batch, "grp1", domainId)
+    FormatSvc->>FormatSvc: createFilePath()
+    FormatSvc->>FormatSvc: Write CSV + GZIP
+    FormatSvc->>MinIO: upload(tempFile, s3://bucket/domain/grp1/file.csv.gz)
+    MinIO-->>FormatSvc: OK
+    FormatSvc-->>Processor: ExportedFile{url}
+    Processor->>Producer: buildCostBasedNodes(...) → sendMessage()
+    Producer->>Downstream: Kafka: { "fileUrl": "...", "type": "COST_BASED" }
+    Downstream-->>MatchingEngine: Start processing
+```
 
 ---
 
-## 6. Concurrency & Async Flow
+## 6. Sequence Diagram: Non-Cost-Based Export
 
-- **Top-level concurrency**: All groups are exported in parallel via `CompletableFuture[]` + `allOf().join()`.
-- **Per-group async**: `UsersExportService.processGroup()` is `@Async("usersExportExecutor")`.
-- **CSV generation async**: `exportCsv()` uses `CompletableFuture.supplyAsync(..., exportExecutor)`.
-- **Kafka send async**: Uses `whenCompleteAsync(..., kafkaCallbackExecutor)` for callbacks.
-- **No blocking joins except at scheduler level** — ensures scalability.
+```mermaid
+sequenceDiagram
+    participant Scheduler
+    participant Service
+    participant Processor
+    participant FormatSvc
+    participant Producer
+    participant Downstream
 
-> ⚠️ Potential Bottleneck: If `usersExportExecutor` thread pool is exhausted, exports may queue or timeout. Monitor pool size vs number of groups.
+    Scheduler->>Service: processGroup("grp2", "NON_COST_BASED", domainId)
+    Service->>Processor: processGroup("grp2", ...)
+    Processor->>DB: findByGroupIdAndSentToMatchingServiceFalse
+    DB-->>Processor: Raw data
+    Processor->>Processor: transformToUserExportDTO()
+    Processor->>FormatSvc: extractEligibleUsernames(batch, "grp2")
+    FormatSvc-->>Processor: ["user1", "user2"]
+    Processor->>Producer: buildNonCostBasedNodesPayload(...)
+    Producer->>Downstream: Kafka: { "refIds": ["user1",...], "type": "NON_COST" }
+    Downstream-->>MatchingEngine: Fast ingestion
+```
 
 ---
 
-## 7. Configuration & Tuning
+## 7. 🗃️ Key Data Structures
 
-### Application Properties (Expected)
+### `UserExportDTO` (Immutable Record)
+```java
+record UserExportDTO(
+    UUID userId,
+    String username,
+    String displayName,
+    String gender,
+    LocalDate dob,
+    String city,
+    String bio,
+    Boolean smokes,
+    Boolean drinks,
+    Set<String> preferredGenders,
+    Integer minAge, Integer maxAge,
+    String relationshipType,
+    Boolean wantsKids,
+    Boolean openToLongDistance,
+    String intent,
+    Boolean readyForMatching,
+    String groupId
+) {}
+```
+
+### `ExportedFile`
+```java
+record ExportedFile(
+    Path localPath,
+    String fileName,
+    String contentType,
+    String groupId,
+    UUID domainId,
+    String remoteUrl
+) {}
+```
+
+### `NodeExchange` (Message Payload)
+```json
+{
+  "groupId": "dating-default",
+  "domainId": "a1b2c3d4-...",
+  "type": "USER",
+  "payload": {
+    "fileUrl": "https://exports.example.com/...",
+    "contentType": "application/gzip"
+  }
+}
+```
+
+---
+
+## 8. Core Design Patterns
+
+| Pattern | Usage |
+|-------|-------|
+| **Strategy Pattern** | Different export logic for `COST_BASED` vs `NON_COST_BASED` |
+| **Async Processing** | `@Async("usersExportExecutor")` for parallel group exports |
+| **Retry Mechanism** | `RetryTemplate` around CSV generation and message sending |
+| **Functional Field Mapping** | `CsvExporter.FieldExtractor<T>` for clean, extensible CSV headers |
+| **Utility Classes** | `UserFieldsExtractor`, `HeaderNormalizer`, `CsvExporter` for reusability |
+| **Synchronized Temp File Creation** | Thread-safe `createFilePath()` to avoid conflicts |
+
+---
+
+## 9. Configuration & Properties
 
 ```properties
-# Domain validation
-domain-id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-
-# Export settings
+# Application Properties
+domain-id=a1b2c3d4-e5f6-7890-g1h2-i3j4k5l6m7n8
 export.batch-size=1000
-export.base-dir=https://minio.example.com
+export.base-dir=https://s3.example.com/flairbit-exports
 export.minio.bucket=flairbit-exports
 
-# Scheduler cron (default: daily 11:20 PM IST)
-# Overridable via @Scheduled(cron=...) or property
+minio.bucket-name=flairbit-exports
 
-# Thread pools (must be defined in configuration)
-# - usersExportExecutor
-# - kafkaCallbackExecutor
+# Cron Schedule (IST)
+0 20 23 * * *   # Every day at 23:20 IST
 ```
-
-### External Dependencies
-- **MinIO**: Bucket must allow uploads. Network access from app.
-- **Kafka**: Topic `flairbit-users` and `flairbit-dlq` must exist.
-- **Database**: Efficient index on `(group_id, sent_to_matching_service)` for `UserRepository`.
 
 ---
 
-## 🧪 8. Assumptions & Limitations
+## 10. Fault Tolerance & Resilience
 
-### Assumptions
-- `domainId` is a valid UUID (validated at startup).
-- Group types are either `COST_BASED` or `NON_COST_BASED` (case-insensitive).
-- `UserRepository.findByGroupIdAndSentToMatchingServiceFalse` returns manageable dataset (< few 100K per group).
-- Underlying executors (`usersExportExecutor`, `kafkaCallbackExecutor`) are properly configured with sufficient threads.
-- MinIO and Kafka are highly available.
+| Feature | Implementation |
+|--------|----------------|
+| **Retry on Failure** | `RetryTemplate` for CSV write and message send |
+| **Error Handling** | `.exceptionally()` in `CompletableFuture` |
+| **Async Isolation** | Dedicated thread pool: `usersExportExecutor` |
+| **Partial Success** | One group fails → others continue |
+| **Logging** | Structured logs with group ID, duration, error context |
+| **Metrics** | Micrometer timers and counters by `groupId`, `groupType` |
 
-### Limitations / Risks
-- **Memory Pressure**: Large groups may cause OOM during CSV generation if batch size is too high.
-- **No Backpressure**: Scheduler triggers regardless of previous run completion. Could overlap if export > 24h.
-- **No Idempotency**: Re-running same group may re-export same users unless `sent_to_matching_service` flag updated elsewhere.
-- **DLQ Not Guaranteed**: If Kafka is down entirely, DLQ send also fails — loss possible.
-- **Hardcoded Topics**: `"flairbit-users"` and `"flairbit-dlq"` are hardcoded — not configurable.
+---
 
-### Future Improvements
-- Make Kafka topics configurable.
-- Add circuit breaker for Kafka/MinIO.
-- Update `sent_to_matching_service` flag after successful export.
-- Add exponential backoff to retry.
-- Support pagination for very large groups.
+## 11. Observability
+
+### Metrics (Micrometer)
+| Metric | Tags | Purpose |
+|------|------|--------|
+| `users_export_duration` | `groupId`, `groupType` | End-to-end group processing time |
+| `users_export_batch_duration` | `groupId` | Batch processing latency |
+| `users_export_csv_duration` | `groupId` | CSV generation time |
+| `users_export_failures` | `groupId`, `groupType` | Alert on failure |
+| `users_export_batch_processed` | `groupId` | Count exported users |
+| `users_export_csv_processed` | `groupId` | Track CSV records |
+
+### Logs
+- INFO: Job start/end, file upload, message sent
+- DEBUG: Fetched user count
+- ERROR: Export failure with stack trace
+
+---
+
+## 12. Edge Cases & Validation
+
+| Case | Handling |
+|-----|---------|
+| Invalid `domain-id` | `@PostConstruct` validates UUID format |
+| Empty batch | Skip export gracefully |
+| Unknown group type | Log warning, skip |
+| MinIO upload failure | Retry → fail export |
+| Kafka send failure | Retry → log error, increment counter |
+| Duplicate `sent_to_matching_service` users | DB query filters them out |
+
+---
+
+## 13. Testing Strategy
+
+| Test Type | Focus |
+|--------|-------|
+| Unit Tests | `CsvExporter`, `UserFieldsExtractor`, `HeaderNormalizer` |
+| Integration Tests | DB query → CSV generation → MinIO upload |
+| Mock Tests | `FlairBitProducer`, `MinioUploadService` |
+| Retry Simulation | Force failure → verify retry behavior |
+| Async Behavior | Verify thread pool usage |
+
+---
+
+## 14. Future Improvements
+
+| Enhancement | Benefit |
+|-----------|--------|
+| Dynamic cron via config | Change schedule without redeploy |
+| Export history tracking | Audit what was sent when |
+| Retry with backoff | Exponential backoff in `RetryTemplate` |
+| ZIP compression | Save bandwidth |
+| GCP/Azure Storage Support | Multi-cloud |
+| Webhook Callback | Notify external system when done |
+| CSV Schema Versioning | Avoid breaking changes |
+
+---
+
+## Summary
+
+This module enables **reliable, scalable, and type-aware user exports** for downstream matching engines. It balances performance, observability, and resilience while cleanly separating concerns.
+
+It is production-ready and aligns with enterprise integration patterns.
+
+---
+```
+
+---
+
+## Diagrams (Render in Mermaid-Compatible Viewer)
+
+You can paste these into [Mermaid Live Editor](https://mermaid.live/edit) or embed in Markdown.
+
+### 1. **Data Flow Diagram**
+```mermaid
+flowchart TD
+    A[Daily Cron] --> B[Scheduler]
+    B --> C[Fetch Groups]
+    C --> D[Async Export per Group]
+    D --> E[Fetch Eligible Users]
+    E --> F{Cost-Based?}
+    F -->|Yes| G[Generate CSV + Upload]
+    F -->|No| H[Extract Usernames]
+    G --> I[Send File Link]
+    H --> J[Send Username List]
+    I --> K[Matching Engine]
+    J --> K
+```
 
 ---
 
