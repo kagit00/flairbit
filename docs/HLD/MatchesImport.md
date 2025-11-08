@@ -22,7 +22,7 @@ Supports **high throughput**, **fault tolerance**, and **observability**.
 
 ```mermaid
 graph TD
-    A[Matching Engine (FlairBit)] -->|Sends Match File| B[Kafka Topic]
+    A["Matching Engine<br/>FlairBit"] -->|"Sends Match File"| B[Kafka Topic]
     B --> C[Matches Import Module]
     C --> D[(PostgreSQL DB)]
     C --> E[Kafka Status Topic]
@@ -35,6 +35,7 @@ graph TD
     style D fill:#4CAF50,stroke:#388E3C,color:white
     style B fill:#9C27B0,stroke:#7B1FA2,color:white
     style E fill:#FF9800,stroke:#F57C00,color:white
+
 ```
 
 ### External Systems
@@ -116,7 +117,7 @@ flowchart LR
     K[Kafka: Match Suggestion Event] --> C{Consumer}
     C --> V[Validate Payload]
     V -->|Invalid| DLQ[Send to DLQ]
-    V -->|Valid| J[Create Import Job (PENDING)]
+    V -->|Valid| J["Create Import Job - PENDING"]
     J --> F[Download Parquet File]
     F --> P[Parse Stream → MatchSuggestions]
     P --> B[Buffer into Batches]
@@ -124,14 +125,18 @@ flowchart LR
     S --> U[Update Job Progress]
     U --> N{More Batches?}
     N -->|Yes| B
-    N -->|No| X[Mark Job COMPLETED]
+    N -->|No| X["Mark Job - COMPLETED"]
     X --> T[Send Status to Kafka]
-    E[Failure Anywhere] --> Y[Mark Job FAILED]
+    E[Failure Anywhere] --> Y["Mark Job - FAILED"]
     Y --> T
 
+    %% Styling
     style DLQ fill:#F44336,stroke:#D32F2F,color:white
     style T fill:#4CAF50,stroke:#388E3C,color:white
     style Y fill:#FF9800,stroke:#F57C00,color:white
+    style J fill:#2196F3,stroke:#1976D2,color:white
+    style X fill:#4CAF50,stroke:#388E3C,color:white
+
 ```
 
 > All operations are **asynchronous**
