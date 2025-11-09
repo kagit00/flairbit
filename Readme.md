@@ -1,189 +1,188 @@
 
-# Dating Platform: High-Level Architecture Overview
+# Dating Platform
 
 ## Introduction
 
-A modern, scalable dating platform built with **Spring Boot** that enables passwordless authentication, progressive user profiling, and intelligent match processing. The system processes millions of user profiles and matches daily while ensuring security, performance, and seamless user experience.
+A modern, scalable dating platform built as a **single Spring Boot application** with a clear **module-based architecture**. This design combines the operational simplicity of a monolith with the organizational benefits of well-defined, loosely-coupled modules, making it easy to develop, deploy, and maintain.
 
 ---
 
 ## System Architecture
 
+The application is a cohesive unit but is internally organized into distinct modules, each with a specific responsibility.
+
 ```mermaid
 graph TB
-    subgraph "Client Layer"
-        A[Mobile App] 
-        B[Web Dashboard]
+    subgraph "Dating Platform Application (Monolith)"
+        direction LR
+        subgraph "API Layer"
+            A[REST Controllers]
+        end
+
+        subgraph "Core Modules"
+            B[Authentication Module]
+            C[Profiling Module]
+            D[Matches Import Module]
+        end
+
+        subgraph "Shared Components"
+            E[Security & JWT]
+            F[Utilities & Config]
+        end
+
+        A --> B
+        A --> C
+        A --> D
+        B --> E
+        C --> E
+        D --> E
     end
 
-    subgraph "API Gateway"
-        C[Spring Cloud Gateway]
-    end
-
-    subgraph "Core Services"
-        D[OTP Auth Service]
-        E[Progressive Profiling Service]
-        F[Matches Import Service]
-    end
-
-    subgraph "Data & Storage"
+    subgraph "External Dependencies"
         G[(PostgreSQL)]
         H[(Redis Cache)]
-        I[MinIO/S3]
-    end
-
-    subgraph "Infrastructure"
+        I[MinIO/S3 Storage]
         J[Kafka]
-        K[Monitoring]
     end
 
-    A --> C
-    B --> C
-    C --> D
-    C --> E
-    C --> F
+    B --> G
+    B --> H
+    C --> G
+    C --> H
+    C --> I
     D --> G
-    D --> H
-    E --> G
-    E --> H
-    E --> I
-    F --> G
-    F --> J
-    J --> F
-    G --> K
-    H --> K
-    J --> K
+    D --> J
 ```
 
 ---
 
-## Authentication Service (OTP-Based)
+## Authentication Module
 
-**Key Features:**
-- Passwordless login via email OTP
-- Automatic user creation for new users
-- JWT-based session management
-- Rate limiting (3 requests/30s per email)
-- 5-minute OTP expiration
+Handles secure, passwordless user access.
 
-**Tech Stack:**
-- Spring Security with JWT (RSA-signed)
-- Redis for OTP caching
-- JavaMailSender for email delivery
+*   **Features:**
+    *   Email-based OTP login.
+    *   Automatic user provisioning.
+    *   JWT session management.
+    *   Rate limiting & OTP expiration.
+*   **Internals:** Uses Spring Security, Redis for OTP caching, and a `JavaMailSender`.
 
 ---
 
-## Progressive Profiling Service
+## Progressive Profiling Module
 
-**Key Features:**
-- Multi-intent profiles (e.g., Dating, Marriage)
-- Modular profile sections (education, lifestyle, etc.)
-- Media upload with cloud storage
-- Real-time profile readiness tracking
-- Intent-based matching groups
+Manages the entire user profile lifecycle.
 
-**Tech Stack:**
-- Spring Data JPA with PostgreSQL
-- Redis for caching
-- MinIO/S3 for media storage
-- OpenAPI documentation
+*   **Features:**
+    *   Multi-intent profiles (e.g., Dating, Marriage).
+    *   Modular profile sections (Education, Lifestyle, etc.).
+    *   Media upload to cloud storage.
+    *   Readiness tracking for matching.
+*   **Internals:** Uses Spring Data JPA, Redis for caching profiles, and integrates with MinIO/S3.
 
 ---
 
-## Matches Import Service
+## Matches Import Module
 
-**Key Features:**
-- High-throughput match ingestion (50M+ daily)
-- Parquet file processing
-- Batch database inserts (PostgreSQL COPY)
-- Kafka-based job orchestration
-- Real-time status tracking
+A high-throughput, asynchronous module for ingesting match suggestions.
 
-**Tech Stack:**
-- Project Reactor for streaming
-- Kafka for messaging
-- PostgreSQL binary COPY
-- Micrometer metrics
+*   **Features:**
+    *   Processes large Parquet files from an external matching engine.
+    *   Uses reactive streaming for memory efficiency.
+    *   Performs fast batch inserts into PostgreSQL.
+    *   Tracks job status via Kafka.
+*   **Internals:** Built with Project Reactor, Kafka for job orchestration, and PostgreSQL's `COPY` command.
 
 ---
 
 ## Technology Stack
 
-| Layer | Technologies |
-|-------|--------------|
-| **Backend** | Java 17, Spring Boot, Spring Security |
+| Category | Technologies |
+|----------|--------------|
+| **Backend** | Java 17, Spring Boot, Spring Security, Project Reactor |
 | **Database** | PostgreSQL, Redis |
-| **Storage** | MinIO/AWS S3 |
+| **Storage** | MinIO / AWS S3 |
 | **Messaging** | Apache Kafka |
-| **Monitoring** | Prometheus, Grafana, ELK |
+| **Monitoring** | Prometheus, Grafana, ELK Stack |
 | **Deployment** | Docker, Kubernetes |
+
+---
+
+## Why a Modular Monolith?
+
+This architecture was chosen to balance development speed with long-term maintainability.
+
+*   **Simplicity:** Single unit to deploy, test, and manage.
+*   **Performance:** In-module communication is fast, in-process calls.
+*   **Transactional Integrity:** Easy to manage ACID transactions across modules.
+*   **Clear Boundaries:** Modules are well-defined, making the codebase organized and easy to understand.
+*   **Future-Proof:** Modules can be extracted into microservices later if needed, without a major rewrite (Strangler Fig pattern).
 
 ---
 
 ## Scalability & Performance
 
-- **Horizontal Scaling**: Stateless services with Kubernetes
-- **Caching**: Redis for hot data (OTP, profiles)
-- **Batch Processing**: Efficient bulk operations (10K+ records/sec)
-- **Async I/O**: Non-blocking operations for high throughput
-- **Optimized DB**: Partitioned tables, connection pooling
+The application is designed to scale horizontally by running multiple instances behind a load balancer.
+
+*   **Stateless Design:** JWT authentication and stateless modules allow for easy scaling.
+*   **Efficient Caching:** Redis reduces database load for hot data like OTPs and user profiles.
+*   **Asynchronous Processing:** The Matches Import module uses reactive streams to handle large data volumes without blocking threads.
+*   **Optimized Database:** Uses efficient batch processing and database partitioning.
 
 ---
 
 ## Security Highlights
 
-- **Zero-Trust Auth**: JWT with RSA signing
-- **Data Encryption**: TLS in transit, at rest encryption
-- **Rate Limiting**: Prevents brute-force attacks
-- **Audit Logging**: Structured logs for compliance
-- **Input Validation**: Comprehensive request validation
+*   **Zero-Trust Auth:** JWT with RSA signing for API security.
+*   **Data Encryption:** All data is encrypted in transit (TLS) and at rest.
+*   **Rate Limiting:** Prevents abuse on sensitive endpoints like OTP generation.
+*   **Input Validation:** Comprehensive validation to prevent injection attacks.
 
 ---
 
 ## Monitoring & Observability
 
-- **Metrics**: Micrometer + Prometheus
-- **Tracing**: OpenTelemetry
-- **Logging**: Structured JSON (Logback)
-- **Alerts**: PagerDuty integration for failures
-- **Health Checks**: Spring Boot Actuator
+*   **Metrics:** Collected via Micrometer and visualized in Prometheus/Grafana.
+*   **Logging:** Structured JSON logs for easy parsing and analysis.
+*   **Health Checks:** Spring Boot Actuator provides liveness and readiness probes.
+*   **Alerting:** Configured alerts for high error rates or processing failures.
 
 ---
 
 ## Deployment Architecture
 
+The entire application is packaged and deployed as a single service.
+
 ```mermaid
 graph LR
     subgraph "Kubernetes Cluster"
-        A[Auth Pods]
-        B[Profiling Pods]
-        C[Import Pods]
+        A[Load Balancer]
+        subgraph "Dating App Pods"
+            B[App Instance 1]
+            C[App Instance 2]
+            D[App Instance N]
+        end
     end
 
     subgraph "AWS/GCP"
-        D[RDS PostgreSQL]
-        E[ElastiCache Redis]
-        F[S3/MinIO]
-        G[Kafka Cluster]
+        E[RDS PostgreSQL]
+        F[ElastiCache Redis]
+        G[S3/MinIO]
+        H[Kafka Cluster]
     end
 
+    A --> B
+    A --> C
     A --> D
-    B --> D
-    C --> D
-    A --> E
     B --> E
     B --> F
+    B --> G
+    B --> H
+    C --> E
+    C --> F
     C --> G
+    C --> H
 ```
-
----
-
-## Key Innovations
-
-1. **Intent-Based Profiles**: Users maintain separate personas for different goals
-2. **Reactive Match Processing**: Stream millions of matches without memory issues
-3. **Smart OTP Caching**: Redis-based rate limiting and expiration
-4. **Binary DB Inserts**: 10x faster match ingestion with PostgreSQL COPY
 
 ---
 
@@ -201,10 +200,9 @@ graph LR
 
 ## Future Roadmap
 
-- AI-powered profile suggestions
-- GraphQL API for flexible queries
-- Multi-region deployment
-- Real-time collaboration features
+*   **AI-Powered Suggestions:** Enhance profiles with smart recommendations.
+*   **GraphQL API:** Provide a more flexible API for clients.
+*   **Module Extraction:** Gradually extract modules like `Matches Import` into microservices as load and team size grow.
 
 ---
 
