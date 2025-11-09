@@ -56,12 +56,12 @@ flowchart TB
 subgraph OTP_Request["POST /auth/request-otp"]
   A1[Client Request] --> B1[AuthenticationController]
   B1 --> C1[AuthenticationServiceImpl]
-  C1 --> D1[Validate request<br/>(email, notification flag)]
+  C1 --> D1[Validate request (email, notification flag)]
   D1 --> E1[Check rate limit (cache)]
-  E1 --> F1[Find or create user<br/>(repository)]
-  F1 --> G1[Generate OTP<br/>and cache with timestamp]
-  G1 --> H1[Send email<br/>(if enabled)]
-  H1 --> I1[Response:<br/>"OTP sent successfully"]
+  E1 --> F1[Find or create user (repository)]
+  F1 --> G1[Generate OTP and cache with timestamp]
+  G1 --> H1[Send email (if enabled)]
+  H1 --> I1[Response: OTP sent successfully]
 end
 
 %% --- OTP Verification Flow ---
@@ -69,23 +69,24 @@ subgraph OTP_Verify["POST /auth/verify-otp"]
   A2[Client Request] --> B2[AuthenticationController]
   B2 --> C2[AuthenticationServiceImpl]
   C2 --> D2[Retrieve OTP from cache]
-  D2 --> E2[Validate OTP match<br/>and expiration (5 min)]
+  D2 --> E2[Validate OTP match and expiration (5 min)]
   E2 --> F2[Invalidate OTP cache]
   F2 --> G2[Fetch user (repository)]
   G2 --> H2[Generate JWT (JwtUtils)]
-  H2 --> I2[Response:<br/>AuthResponse (JWT + UserDTO)]
+  H2 --> I2[Response: AuthResponse (JWT + UserDTO)]
 end
 
 %% --- Protected Request Flow ---
 subgraph Protected_Request["GET /api/data (Protected Endpoint)"]
-  A3[Client Request<br/>Authorization: Bearer JWT] --> B3[AuthTokenFilter<br/>(Spring Filter Chain)]
-  B3 --> C3[Extract token and username<br/>from header]
-  C3 --> D3[Validate JWT<br/>(signature, expiration, username)]
-  D3 --> E3[Load UserDetails<br/>(UserDetailsServiceImpl)]
-  E3 --> F3[Set Authentication<br/>in SecurityContextHolder]
-  F3 --> G3[Proceed to Controller<br/>if authenticated]
-  D3 -.-> X3[Invalid Token] -.-> Y3[JwtAuthenticationEntryPoint<br/>401/403 Error]
+  A3[Client Request with Authorization: Bearer JWT] --> B3[AuthTokenFilter (Spring Filter Chain)]
+  B3 --> C3[Extract token and username from header]
+  C3 --> D3[Validate JWT (signature, expiration, username)]
+  D3 --> E3[Load UserDetails (UserDetailsServiceImpl)]
+  E3 --> F3[Set Authentication in SecurityContextHolder]
+  F3 --> G3[Proceed to Controller if authenticated]
+  D3 -.-> X3[Invalid Token] -.-> Y3[JwtAuthenticationEntryPoint (401 or 403 Error)]
 end
+
 
 ```
 
