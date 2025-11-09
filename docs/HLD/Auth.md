@@ -49,53 +49,82 @@ The system is modular, following Spring Boot conventions (Controllers, Services,
     - Error Handling: `ResponseStatusException`, `ErrorUtility` for JSON error responses.
 
 ### 3. High-Level Data Flow
-```
-Client Request (POST /auth/request-otp) --> AuthenticationController --> AuthenticationServiceImpl
-  - Validate request (email, notification flag).
-  - Check rate limit (cache).
-  - Find/create user (repository).
-  - Generate OTP, cache it (with timestamp).
-  - Send email (if enabled).
-  --> Response: "OTP sent successfully"
+```mermaid
+flowchart TB
 
-Client Request (POST /auth/verify-otp) --> AuthenticationController --> AuthenticationServiceImpl
-  - Retrieve OTP from cache.
-  - Validate OTP match and expiration (5 min).
-  - Invalidate OTP cache.
-  - Fetch user (repository).
-  - Generate JWT (JwtUtils).
-  --> Response: AuthResponse (JWT token + UserDTO)
+%% --- OTP Request Flow ---
+subgraph OTP_Request["POST /auth/request-otp"]
+  A1[Client Request] --> B1[AuthenticationController]
+  B1 --> C1[AuthenticationServiceImpl]
+  C1 --> D1[Validate request<br/>(email, notification flag)]
+  D1 --> E1[Check rate limit (cache)]
+  E1 --> F1[Find or create user<br/>(repository)]
+  F1 --> G1[Generate OTP<br/>and cache with timestamp]
+  G1 --> H1[Send email<br/>(if enabled)]
+  H1 --> I1[Response:<br/>"OTP sent successfully"]
+end
 
-Subsequent Protected Requests (e.g., GET /api/data):
-  - Client sends Authorization: Bearer <JWT>.
-  - AuthTokenFilter (Spring Filter Chain):
-    - Extract token/username from header.
-    - Validate JWT (JwtUtils: signature, expiration, username match).
-    - Load UserDetails (UserDetailsServiceImpl).
-    - Set authentication in SecurityContextHolder.
-  - If invalid: JwtAuthenticationEntryPoint --> 401/403 error.
-  --> Proceed to controller if authenticated.
+%% --- OTP Verification Flow ---
+subgraph OTP_Verify["POST /auth/verify-otp"]
+  A2[Client Request] --> B2[AuthenticationController]
+  B2 --> C2[AuthenticationServiceImpl]
+  C2 --> D2[Retrieve OTP from cache]
+  D2 --> E2[Validate OTP match<br/>and expiration (5 min)]
+  E2 --> F2[Invalidate OTP cache]
+  F2 --> G2[Fetch user (repository)]
+  G2 --> H2[Generate JWT (JwtUtils)]
+  H2 --> I2[Response:<br/>AuthResponse (JWT + UserDTO)]
+end
+
+%% --- Protected Request Flow ---
+subgraph Protected_Request["GET /api/data (Protected Endpoint)"]
+  A3[Client Request<br/>Authorization: Bearer JWT] --> B3[AuthTokenFilter<br/>(Spring Filter Chain)]
+  B3 --> C3[Extract token and username<br/>from header]
+  C3 --> D3[Validate JWT<br/>(signature, expiration, username)]
+  D3 --> E3[Load UserDetails<br/>(UserDetailsServiceImpl)]
+  E3 --> F3[Set Authentication<br/>in SecurityContextHolder]
+  F3 --> G3[Proceed to Controller<br/>if authenticated]
+  D3 -.-> X3[Invalid Token] -.-> Y3[JwtAuthenticationEntryPoint<br/>401/403 Error]
+end
+
 ```
 
 **Sequence Diagram (Textual Representation):**
-```
-[Client] --> [Controller]: requestOtp(email)
-[Controller] --> [Service]: requestOtp()
-[Service] --> [RateLimitCache]: Check/Increment count
-[Service] --> [OtpCache]: Check existing/Generate new OTP
-[Service] --> [UserRepo]: Find or Create User
-[Service] --> [MailSender]: Send OTP Email (optional)
-[Service] --> [OtpCache]: Store OtpEntry
-[Service] <-- [Controller]: OK Response
 
-[Client] --> [Controller]: verifyOtp(email, otp)
-[Controller] --> [Service]: verifyOtp()
-[Service] --> [OtpCache]: Get OtpEntry
-[Service] --> [Logic]: Validate OTP & Expiration
-[Service] --> [UserRepo]: Get User
-[Service] --> [JwtUtils]: Generate Token
-[Service] --> [OtpCache]: Invalidate
-[Service] <-- [Controller]: AuthResponse (JWT + UserDTO)
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant Ctrl as AuthenticationController
+    participant S as AuthenticationServiceImpl
+    participant RL as RateLimitCache
+    participant OC as OtpCache
+    participant UR as UserRepository
+    participant MS as MailSender
+    participant L as Logic
+    participant JWT as JwtUtils
+
+    %% --- OTP Request Flow ---
+    C ->> Ctrl: requestOtp(email)
+    Ctrl ->> S: requestOtp()
+    S ->> RL: Check / Increment count
+    S ->> OC: Check existing / Generate new OTP
+    S ->> UR: Find or Create User
+    S ->> MS: Send OTP Email (optional)
+    S ->> OC: Store OtpEntry
+    S -->> Ctrl: OK Response
+    Ctrl -->> C: "OTP sent successfully"
+
+    %% --- OTP Verification Flow ---
+    C ->> Ctrl: verifyOtp(email, otp)
+    Ctrl ->> S: verifyOtp()
+    S ->> OC: Get OtpEntry
+    S ->> L: Validate OTP & Expiration
+    S ->> UR: Get User
+    S ->> JWT: Generate Token
+    S ->> OC: Invalidate OTP
+    S -->> Ctrl: AuthResponse (JWT + UserDTO)
+    Ctrl -->> C: Return JWT + UserDTO
+
 ```
 
 ### 4. Key Interactions and Dependencies
