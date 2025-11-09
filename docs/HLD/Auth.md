@@ -53,40 +53,39 @@ The system is modular, following Spring Boot conventions (Controllers, Services,
 flowchart TB
 
 %% --- OTP Request Flow ---
-subgraph OTP_Request["POST /auth/request-otp"]
-  A1[Client Request] --> B1[AuthenticationController]
-  B1 --> C1[AuthenticationServiceImpl]
-  C1 --> D1[Validate request (email, notification flag)]
-  D1 --> E1[Check rate limit (cache)]
-  E1 --> F1[Find or create user (repository)]
-  F1 --> G1[Generate OTP and cache with timestamp]
-  G1 --> H1[Send email (if enabled)]
-  H1 --> I1[Response: OTP sent successfully]
+subgraph OTP_Request [POST auth request-otp]
+  A1[Client Request] --> B1[Authentication Controller]
+  B1 --> C1[Authentication Service Impl]
+  C1 --> D1[Validate request - email and notification flag]
+  D1 --> E1[Check rate limit using cache]
+  E1 --> F1[Find or create user in repository]
+  F1 --> G1[Generate OTP and store in cache with timestamp]
+  G1 --> H1[Send email if notifications enabled]
+  H1 --> I1[Response - OTP sent successfully]
 end
 
 %% --- OTP Verification Flow ---
-subgraph OTP_Verify["POST /auth/verify-otp"]
-  A2[Client Request] --> B2[AuthenticationController]
-  B2 --> C2[AuthenticationServiceImpl]
+subgraph OTP_Verify [POST auth verify-otp]
+  A2[Client Request] --> B2[Authentication Controller]
+  B2 --> C2[Authentication Service Impl]
   C2 --> D2[Retrieve OTP from cache]
-  D2 --> E2[Validate OTP match and expiration (5 min)]
-  E2 --> F2[Invalidate OTP cache]
-  F2 --> G2[Fetch user (repository)]
-  G2 --> H2[Generate JWT (JwtUtils)]
-  H2 --> I2[Response: AuthResponse (JWT + UserDTO)]
+  D2 --> E2[Validate OTP match and expiration - 5 min]
+  E2 --> F2[Invalidate OTP in cache]
+  F2 --> G2[Fetch user from repository]
+  G2 --> H2[Generate JWT using JwtUtils]
+  H2 --> I2[Response - AuthResponse with JWT and UserDTO]
 end
 
 %% --- Protected Request Flow ---
-subgraph Protected_Request["GET /api/data (Protected Endpoint)"]
-  A3[Client Request with Authorization: Bearer JWT] --> B3[AuthTokenFilter (Spring Filter Chain)]
+subgraph Protected_Request [GET api data - Protected Endpoint]
+  A3[Client Request with Authorization header] --> B3[AuthToken Filter - Spring Chain]
   B3 --> C3[Extract token and username from header]
-  C3 --> D3[Validate JWT (signature, expiration, username)]
-  D3 --> E3[Load UserDetails (UserDetailsServiceImpl)]
-  E3 --> F3[Set Authentication in SecurityContextHolder]
+  C3 --> D3[Validate JWT - signature, expiration, username]
+  D3 --> E3[Load UserDetails from UserDetailsService Impl]
+  E3 --> F3[Set authentication in Security Context Holder]
   F3 --> G3[Proceed to Controller if authenticated]
-  D3 -.-> X3[Invalid Token] -.-> Y3[JwtAuthenticationEntryPoint (401 or 403 Error)]
+  D3 -.-> X3[Invalid token] -.-> Y3[Jwt Authentication Entry Point - 401 or 403 error]
 end
-
 
 ```
 
