@@ -1,0 +1,101 @@
+version: '3.9'
+
+networks:
+  kafka-network:
+    external: true
+
+volumes:
+  postgres_alt_data:
+  redis_alt_data:
+  minio_data:
+  rabbitmq_data:
+
+services:
+  postgres_alt:
+    image: postgres:16
+    container_name: postgres_alt
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: flairbit
+    volumes:
+      - postgres_alt_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - kafka-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis_alt:
+    image: redis:7
+    container_name: redis_alt
+    restart: always
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_alt_data:/data
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    networks:
+      - kafka-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    restart: always
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - kafka-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  flairbit:
+    build: .
+    container_name: flairbit
+    depends_on:
+      postgres_alt:
+        condition: service_healthy
+      redis_alt:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      SERVICE_AUTH_PRIVATE_KEY: classpath:keys/user-auth/private_key.pem
+      SERVICE_AUTH_PUBLIC_KEY: classpath:keys/service-to-service-auth/public-key.pem
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres_alt:5432/flairbit
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_REDIS_HOST: redis_alt
+      SPRING_REDIS_PORT: 6379
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EXPORT_BASE_DIR: http://minio:9000/flairbit-exports
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: flairbit-exports
+
+
+    ports:
+      - "8081:8081"
+    networks:
+      - kafka-network
+    restart: always

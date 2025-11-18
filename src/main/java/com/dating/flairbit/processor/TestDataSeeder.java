@@ -34,7 +34,7 @@ public class TestDataSeeder implements ApplicationListener<ApplicationReadyEvent
     private final ProfessionUpdateService professionService;
 
     private static final int BATCH_SIZE = 1000;
-    private static final int TOTAL_USERS = 20000;
+    private static final int TOTAL_USERS = 50000;
     private static final int INIT = 0;
     private static final List<String> RELIGIONS = List.of(
             "Christianity", "Islam", "Hinduism", "Buddhism", "Judaism",
@@ -71,7 +71,6 @@ public class TestDataSeeder implements ApplicationListener<ApplicationReadyEvent
     private void seedSingleUser(int userIndex) {
         String email = "testuser+" + userIndex + "@example.com";
 
-        // Step 1: Create user with OTP request
         authenticationService.requestOtp(
                 RequestOtpRequest.builder()
                         .email(email)
@@ -79,7 +78,6 @@ public class TestDataSeeder implements ApplicationListener<ApplicationReadyEvent
                         .build()
         );
 
-        // Step 2: Create a profile per intent (each with its own user match state)
         List<Profile> profiles = new ArrayList<>();
         for (String intent : INTENTS) {
             Profile profile = profileService.createOrUpdateProfile(email,

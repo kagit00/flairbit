@@ -86,7 +86,7 @@ public final class RequestMakerUtility {
                 .build();
     }
 
-    public static UserMatchStateDTO build(String intent, String groupId, String gender, LocalDate dob) {
+    public static UserMatchStateDTO build(String intent, String groupId, String gender, LocalDate dob, String email) {
         return  UserMatchStateDTO.builder()
                 .intent(intent)
                 .gender(gender)
@@ -94,6 +94,7 @@ public final class RequestMakerUtility {
                 .groupId(groupId)
                 .sentToMatchingService(false)
                 .profileComplete(false)
+                .email(email)
                 .build();
     }
 

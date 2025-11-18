@@ -21,4 +21,5 @@ public class UserMatchStateDTO {
     private LocalDate dateOfBirth;
     private LocalDateTime lastMatchedAt;
     private String groupId;
+    private String email;
 }

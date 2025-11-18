@@ -59,7 +59,7 @@ public class ProfileServiceImpl implements ProfileService {
         profileRepository.save(profile);
         userMatchStateService.createOrUpdateUserMatchState(
                 profile,
-                RequestMakerUtility.build(intent, groupId, profileRequest.getGender(), profileRequest.getDob())
+                RequestMakerUtility.build(intent, groupId, profileRequest.getGender(), profileRequest.getDob(), email)
         );
 
         return profile;

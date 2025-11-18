@@ -39,7 +39,7 @@ public class UserMatchStateServiceImpl implements UserMatchStateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = {"profileCache"}, key = "#email")
+    @CacheEvict(value = {"profileCache"}, key = "#request.email")
     public void createOrUpdateUserMatchState(Profile profile, UserMatchStateDTO request) {
         if (Objects.isNull(profile)) throw new BadRequestException("Profile, request, or intent cannot be null.");
         if (ObjectUtils.allNull(request)) throw new BadRequestException("user match state payload cannot be empty.");
