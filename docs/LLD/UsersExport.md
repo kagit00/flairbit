@@ -201,7 +201,7 @@ class UsersExportScheduler {
 }
 
 class UsersExportService {
-    +processGroup(...)
+    +processGroup()
 }
 
 class MatchingGroupRepository {
@@ -229,7 +229,7 @@ class NonCostBasedUsersExportProcessor {
 %% Formatting / Export
 %% ========================
 
-interface UsersExportFormattingService {
+class UsersExportFormattingService {
     +exportCsv()
     +extractEligibleUsernames()
 }
@@ -310,6 +310,7 @@ UsersExportFormattingServiceImpl --> MeterRegistry : uses
 
 FlairBitProducer --> KafkaTemplate : uses
 FlairBitProducer --> Executor : uses
+
 ```
 
 ### 4.2. Key Domain Objects
