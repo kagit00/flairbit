@@ -13,7 +13,7 @@ This document provides a detailed low-level design (LLD) for the authentication 
 
 ### 2. Class Diagrams (Textual UML Representation)
 #### Core Classes
-```mermaid
+```
 AuthenticationController
 ├── @RestController, @RequestMapping("/auth")
 ├── Dependencies: AuthenticationService
@@ -34,7 +34,7 @@ AuthenticationServiceImpl implements AuthenticationService
 ```
 
 #### Security Components
-```mermaid
+```
 AuthTokenFilter extends OncePerRequestFilter
 ├── @Component
 ├── Dependencies: JwtUtils, UserDetailsServiceImpl (@Autowired)
