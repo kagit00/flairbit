@@ -33,8 +33,8 @@ public class TestDataSeeder implements ApplicationListener<ApplicationReadyEvent
     private final PreferencesUpdateService preferencesService;
     private final ProfessionUpdateService professionService;
 
-    private static final int BATCH_SIZE = 1000;
-    private static final int TOTAL_USERS = 50000;
+    private static final int BATCH_SIZE = 100;
+    private static final int TOTAL_USERS = 1000;
     private static final int INIT = 0;
     private static final List<String> RELIGIONS = List.of(
             "Christianity", "Islam", "Hinduism", "Buddhism", "Judaism",

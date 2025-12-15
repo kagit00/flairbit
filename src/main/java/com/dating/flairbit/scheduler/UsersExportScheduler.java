@@ -37,7 +37,7 @@ public class UsersExportScheduler {
         }
     }
 
-    @Scheduled(cron = "0 20 12 * * *", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 59 20 * * *", zone = "Asia/Kolkata")
     public void scheduledExportJob() {
         List<MatchingGroupConfig> groupConfigs = groupConfigRepository.findAll();
         log.info("Starting export for {} active groups", groupConfigs.size());

@@ -22,12 +22,7 @@ public class MinioUploadService {
         this.minioClient = minioClient;
     }
 
-    /**
-     * Uploads a local file to the configured MinIO bucket.
-     *
-     * @param localPath  the path of the local file to upload
-     * @param objectName the object name to use in MinIO
-     */
+
     public void upload(String localPath, String objectName) {
         try {
             if (!minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build())) {
