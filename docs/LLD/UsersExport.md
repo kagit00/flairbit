@@ -31,32 +31,45 @@ graph TD
   A[Scheduler: UsersExportScheduler] --> B[MatchingGroupRepository]
   A --> C[UsersExportService]
   C --> D[UsersExportProcessor]
+
   D --> E[CostBasedUsersExportProcessor]
   D --> F[NonCostBasedUsersExportProcessor]
+
   E --> G[UsersExportFormattingService]
+  F --> G
+
   G --> H[UsersExportFormattingServiceImpl]
+
   H --> I[UserRepository]
+  I --> L[DB: User table]
+
   H --> J[RetryTemplate]
   H --> K[MinioUploadService]
-  I --> L[DB (User table)]
   K --> M[MinIO Bucket]
+
+  %% Metrics / Observability
   G --> N[MeterRegistry]
   C --> N
   E --> N
   F --> N
-  G --> O[ThreadPoolTaskExecutor (usersExportExecutor)]
-  O --> P[Executor (exportExecutor)]
+  N --> R[Prometheus-Grafana]
+
+  %% Async execution
+  G --> O[ThreadPoolTaskExecutor: usersExportExecutor]
+  O --> P[Executor: exportExecutor]
+
   %% Kafka producer
-  F --> Q[FlairBitProducer]
-  E --> Q
-  %% Observability
-  N --> R[Prometheus / Grafana]
+  E --> Q[FlairBitProducer]
+  F --> Q
+
   %% Error handling
-  E --> S[DLQ (flairbit-dlq)]
+  E --> S[DLQ: flairbit-dlq]
   F --> S
+
   %% Styling
   classDef component fill:#f0f4c3,stroke:#2b7a0b,stroke-width:2px;
   class A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S component;
+
 ```
 
 ### Explanation
@@ -177,83 +190,126 @@ sequenceDiagram
 
 ```mermaid
 classDiagram
-    class UsersExportScheduler {
-        +validateDomainId()
-        +scheduledExportJob()
-    }
-    class UsersExportService {
-        +processGroup(...)
-    }
-    class MatchingGroupRepository {
-        +findAll()
-    }
-    class UsersExportProcessor {
-        +processGroup()
-        +processBatchForGroupType()
-    }
-    class CostBasedUsersExportProcessor {
-        +processBatch()
-    }
-    class NonCostBasedUsersExportProcessor {
-        +processBatch()
-    }
-    class UsersExportFormattingService <<interface>> {
-        +exportCsv()
-        +extractEligibleUsernames()
-    }
-    class UsersExportFormattingServiceImpl {
-        +exportCsv()
-        +createFilePath()
-        +extractEligibleUsernames()
-    }
-    class MinioUploadService {
-        +upload()
-    }
-    class UsersExportFormattingServiceImpl ..> UserRepository : uses
-    UsersExportFormattingServiceImpl ..> RetryTemplate : uses
-    UsersExportFormattingServiceImpl ..> ThreadPoolTaskExecutor : uses
-    UsersExportFormattingServiceImpl ..> MinioUploadService : uses
-    UsersExportFormattingServiceImpl ..> MeterRegistry : uses
-    UsersExportFormattingServiceImpl ..> exportExecutor : pools threads
-    UsersExportFormattingServiceImpl ..> UsersExportProcessor : called by?
-    UsersExportProcessor ..> CostBasedUsersExportProcessor : conditional dispatch
-    UsersExportProcessor ..> NonCostBasedUsersExportProcessor : conditional dispatch
-    CostBasedUsersExportProcessor ..> UsersExportFormattingService : uses
-    CostBasedUsersExportProcessor ..> RetryTemplate : uses
-    CostBasedUsersExportProcessor ..> FlairBitProducer : uses
-    CostBasedUsersExportProcessor ..> MeterRegistry : uses
-    NonCostBasedUsersExportProcessor ..> UsersExportFormattingService : uses
-    NonCostBasedUsersExportProcessor ..> FlairBitProducer : uses
-    FlairBitProducer ..> KafkaTemplate : uses
-    FlairBitProducer ..> Executor : uses
-    class RetryTemplate { execute() }
-    class MeterRegistry { timer()/counter() }
-    class ThreadPoolTaskExecutor { executeAsync() }
-    class MinioClient { uploadObject() }
-    class KafkaTemplate { send() }
-    class Executor { supplyAsync() }
-    
-    UsersExportScheduler --> MatchingGroupRepository : inject
-    UsersExportScheduler --> UsersExportService : inject
-    UsersExportService --> UsersExportProcessor : inject
-    UsersExportProcessor --> UsersExportFormattingService : inject
-    UsersExportProcessor --> MeterRegistry : inject
-    UsersExportProcessor --> RetryTemplate : inject
-    UsersExportProcessor --> UsersExportProcessor : async
-    CostBasedUsersExportProcessor --> UsersExportFormattingService : inject
-    CostBasedUsersExportProcessor --> MinioUploadService : inject
-    CostBasedUsersExportProcessor --> FlairBitProducer : inject
-    CostBasedUsersExportProcessor --> RetryTemplate : inject
-    NonCostBasedUsersExportProcessor --> UsersExportFormattingService : inject
-    NonCostBasedUsersExportProcessor --> FlairBitProducer : inject
-    UsersExportFormattingServiceImpl --> UsersExportFormattingService : implements
-    UsersExportFormattingServiceImpl --> UserRepository : uses
-    UsersExportFormattingServiceImpl --> ThreadPoolTaskExecutor : uses
-    UsersExportFormattingServiceImpl --> MinioUploadService : uses
-    UsersExportFormattingServiceImpl --> RetryTemplate : uses
-    UsersExportFormattingServiceImpl --> MeterRegistry : uses
-    FlairBitProducer --> KafkaTemplate : uses
-    FlairBitProducer --> Executor : uses
+
+%% ========================
+%% Scheduler / Entry Layer
+%% ========================
+
+class UsersExportScheduler {
+    +validateDomainId()
+    +scheduledExportJob()
+}
+
+class UsersExportService {
+    +processGroup(...)
+}
+
+class MatchingGroupRepository {
+    +findAll()
+}
+
+%% ========================
+%% Core Processing Layer
+%% ========================
+
+class UsersExportProcessor {
+    +processGroup()
+    +processBatchForGroupType()
+}
+
+class CostBasedUsersExportProcessor {
+    +processBatch()
+}
+
+class NonCostBasedUsersExportProcessor {
+    +processBatch()
+}
+
+%% ========================
+%% Formatting / Export
+%% ========================
+
+interface UsersExportFormattingService {
+    +exportCsv()
+    +extractEligibleUsernames()
+}
+
+class UsersExportFormattingServiceImpl {
+    +exportCsv()
+    +createFilePath()
+    +extractEligibleUsernames()
+}
+
+class MinioUploadService {
+    +upload()
+}
+
+%% ========================
+%% Infra / Utilities
+%% ========================
+
+class RetryTemplate {
+    +execute()
+}
+
+class MeterRegistry {
+    +timer()
+    +counter()
+}
+
+class ThreadPoolTaskExecutor {
+    +executeAsync()
+}
+
+class KafkaTemplate {
+    +send()
+}
+
+class Executor {
+    +supplyAsync()
+}
+
+class FlairBitProducer {
+    +send()
+}
+
+class UserRepository
+
+%% ========================
+%% Relationships
+%% ========================
+
+UsersExportScheduler --> MatchingGroupRepository : injects
+UsersExportScheduler --> UsersExportService : injects
+
+UsersExportService --> UsersExportProcessor : injects
+
+UsersExportProcessor --> UsersExportFormattingService : injects
+UsersExportProcessor --> MeterRegistry : injects
+UsersExportProcessor --> RetryTemplate : injects
+UsersExportProcessor --> UsersExportProcessor : async dispatch
+
+UsersExportProcessor ..> CostBasedUsersExportProcessor : conditional dispatch
+UsersExportProcessor ..> NonCostBasedUsersExportProcessor : conditional dispatch
+
+CostBasedUsersExportProcessor --> UsersExportFormattingService : uses
+CostBasedUsersExportProcessor --> RetryTemplate : uses
+CostBasedUsersExportProcessor --> FlairBitProducer : uses
+CostBasedUsersExportProcessor --> MeterRegistry : uses
+CostBasedUsersExportProcessor --> MinioUploadService : uses
+
+NonCostBasedUsersExportProcessor --> UsersExportFormattingService : uses
+NonCostBasedUsersExportProcessor --> FlairBitProducer : uses
+
+UsersExportFormattingServiceImpl ..|> UsersExportFormattingService
+UsersExportFormattingServiceImpl --> UserRepository : uses
+UsersExportFormattingServiceImpl --> RetryTemplate : uses
+UsersExportFormattingServiceImpl --> ThreadPoolTaskExecutor : uses
+UsersExportFormattingServiceImpl --> MinioUploadService : uses
+UsersExportFormattingServiceImpl --> MeterRegistry : uses
+
+FlairBitProducer --> KafkaTemplate : uses
+FlairBitProducer --> Executor : uses
 ```
 
 ### 4.2. Key Domain Objects
