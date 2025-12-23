@@ -18,6 +18,17 @@ public record ExportedFile(byte[] content, String fileName, String contentType, 
                 Objects.equals(filePath, that.filePath);
     }
 
+    public static ExportedFile empty(String groupId, UUID domainId) {
+        return new ExportedFile(
+                null,
+                null,
+                null,
+                groupId,
+                domainId,
+                null
+        );
+    }
+
     @Override
     public int hashCode() {
         return Objects.hash(Arrays.hashCode(content), fileName, contentType, groupId, domainId, filePath);

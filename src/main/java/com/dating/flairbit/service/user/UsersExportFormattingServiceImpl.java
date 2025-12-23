@@ -66,7 +66,6 @@ public class UsersExportFormattingServiceImpl implements UsersExportFormattingSe
         return CompletableFuture.supplyAsync(() -> {
 
             List<UserFieldsExtractor.UserView> userViews = userDtos.stream()
-                    .filter(dto -> groupId.equalsIgnoreCase(dto.groupId()))
                     .map(dto -> new UserFieldsExtractor.UserView(
                             RequestMakerUtility.buildUserFromUserExportDTO(dto),
                             RequestMakerUtility.buildProfileFromUserExportDto(dto)

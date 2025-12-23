@@ -29,8 +29,11 @@ ENV JAVA_OPTS="-Xms256m -Xmx512m"
 
 # Wait for all dependencies to be ready, then start the app
 ENTRYPOINT ["sh", "-c", "\
-until nc -z kafka 9092; do echo waiting for kafka_alt; sleep 2; done; \
-until nc -z postgres_alt 5432; do echo waiting for postgres_alt; sleep 2; done; \
-until nc -z redis_alt 6379; do echo waiting for redis_alt; sleep 2; done; \
-echo All dependencies are up! Starting app...; \
-java $JAVA_OPTS -jar app.jar"]
+mkdir -p /logs; \
+echo \"==== NEW RUN `date` ====\" >> /logs/flairbit.log; \
+until nc -z kafka 9092; do echo waiting for kafka >> /logs/flairbit.log; sleep 2; done; \
+until nc -z postgres_alt 5432; do echo waiting for postgres >> /logs/flairbit.log; sleep 2; done; \
+until nc -z redis_alt 6379; do echo waiting for redis >> /logs/flairbit.log; sleep 2; done; \
+echo All dependencies are up! Starting app... >> /logs/flairbit.log; \
+java $JAVA_OPTS -jar app.jar >> /logs/flairbit.log 2>&1"]
+

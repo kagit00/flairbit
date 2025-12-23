@@ -28,6 +28,7 @@ public class UsersExportScheduler {
     @Value("${domain-id}")
     private String domainId;
 
+
     @PostConstruct
     public void validateDomainId() {
         try {
@@ -37,7 +38,7 @@ public class UsersExportScheduler {
         }
     }
 
-    @Scheduled(cron = "0 59 20 * * *", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 50 20 * * *", zone = "Asia/Kolkata")
     public void scheduledExportJob() {
         List<MatchingGroupConfig> groupConfigs = groupConfigRepository.findAll();
         log.info("Starting export for {} active groups", groupConfigs.size());

@@ -92,6 +92,8 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: flairbit-exports
+    volumes:
+      - ./logs:/logs
 
 
     ports:

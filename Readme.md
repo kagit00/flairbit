@@ -105,22 +105,7 @@ The architecture is designed for high throughput and low latency.
 *   **Rate Limiting:** Prevents abuse on sensitive endpoints like OTP generation.
 *   **Input Validation:** Comprehensive validation to prevent injection attacks.
 
----
 
-## Deployment Strategy
 
-The application is designed for containerization and deployment on a modern orchestration platform like Kubernetes. This allows for simple scaling, rolling updates, and high availability.
-
----
-
-## 📈 Designed for Scale
-
-| Metric | Target Design Capacity |
-|--------|------------------------|
-| Authentication Requests | 500K+ / day |
-| Profile Updates | 100K+ / day |
-| Matches Processed | 50M+ / day |
-| Media Uploads | 10K+ / day |
-| API QPS | 1K+ |
 
 ---

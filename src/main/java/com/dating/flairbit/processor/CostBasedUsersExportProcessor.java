@@ -1,6 +1,7 @@
 package com.dating.flairbit.processor;
 
 import com.dating.flairbit.async.FlairBitProducer;
+import com.dating.flairbit.dto.ExportedFile;
 import com.dating.flairbit.dto.NodeExchange;
 import com.dating.flairbit.dto.db.UserExportDTO;
 import com.dating.flairbit.service.user.UsersExportFormattingService;
