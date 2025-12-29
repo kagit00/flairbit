@@ -43,9 +43,6 @@ public class UsersExportFormattingServiceImpl implements UsersExportFormattingSe
     @Value("${export.base-dir}")
     private String baseDir;
 
-    @Value("${export.batch-size:1000}")
-    private int batchSize;
-
     @Value("${export.minio.bucket:flairbit-exports}")
     private String bucketName;
 
@@ -64,65 +61,68 @@ public class UsersExportFormattingServiceImpl implements UsersExportFormattingSe
     @Override
     public CompletableFuture<ExportedFile> exportCsv(List<UserExportDTO> userDtos, String groupId, UUID domainId) {
         return CompletableFuture.supplyAsync(() -> {
-
-            List<UserFieldsExtractor.UserView> userViews = userDtos.stream()
-                    .map(dto -> new UserFieldsExtractor.UserView(
-                            RequestMakerUtility.buildUserFromUserExportDTO(dto),
-                            RequestMakerUtility.buildProfileFromUserExportDto(dto)
-                    ))
-                    .toList();
-
-            if (userViews.isEmpty()) {
-                log.info("No valid user views for group '{}'", groupId);
+            if (userDtos == null || userDtos.isEmpty()) {
                 return null;
             }
 
-            return retryTemplate.execute(context -> {
-                try {
+            // Perform logic inside retry template
+            try {
+                return retryTemplate.execute(context -> {
                     long startTime = System.nanoTime();
-                    Path fullPath = createFilePath(groupId, domainId);
+                    Path localPath = createFilePath(groupId, domainId);
 
-                    try (Writer writer = new OutputStreamWriter(
-                            new GZIPOutputStream(Files.newOutputStream(fullPath)),
-                            StandardCharsets.UTF_8
-                    )) {
-                        CSVWriter csvWriter = new CSVWriter(writer, ',', '"', '"', "\n");
+                    try {
+                        // 1. Generate CSV
+                        writeCsvToFile(userDtos, localPath, groupId);
 
-                        List<CsvExporter.FieldExtractor<UserFieldsExtractor.UserView>> extractors = UserFieldsExtractor.fieldExtractors();
-                        String[] headers = new String[extractors.size() + 1];
-                        headers[0] = HeaderNormalizer.FIELD_GROUP_ID;
-                        for (int i = 0; i < extractors.size(); i++) {
-                            headers[i + 1] = extractors.get(i).header();
-                        }
+                        // 2. Prepare MinIO paths
+                        String fileName = localPath.getFileName().toString();
+                        String objectName = String.format("%s/%s/%s", domainId, groupId, fileName);
 
-                        csvWriter.writeNext(headers);
-                        for (UserFieldsExtractor.UserView userView : userViews) {
-                            csvWriter.writeNext(CsvExporter.mapEntityToCsvRow(userView, groupId, extractors), false);
-                        }
+                        minioUploadService.upload(localPath.toString(), objectName);
+
+                        // 4. Finalize
+                        String remoteUrl = String.format("%s/%s/%s/%s", baseDir, domainId, groupId, fileName)
+                                .replaceAll("(?<!:)//", "/");
+
+                        long durationMs = (System.nanoTime() - startTime) / 1_000_000;
+                        meterRegistry.timer("users_export_csv_duration", "groupId", groupId).record(durationMs, TimeUnit.MILLISECONDS);
+
+                        log.info("Export/Upload complete for group '{}'. URL: {}", groupId, remoteUrl);
+
+                        return new ExportedFile(null, fileName, "application/gzip", groupId, domainId, remoteUrl);
+
+                    } catch (Exception e) {
+                        log.error("Batch attempt {} failed for group '{}': {}", context.getRetryCount(), groupId, e.getMessage());
+                        throw new RuntimeException("Export failed", e);
                     }
-
-                    String fileName = fullPath.getFileName().toString();
-                    String objectName = String.format("%s/%s/%s", domainId, groupId, fileName);
-                    minioUploadService.upload(fullPath.toString(), objectName);
-
-                    String remoteUrl = String.format("%s/%s/%s/%s", baseDir, domainId, groupId, fileName).replaceAll("(?<!:)//", "/");
-                    log.info("Uploaded CSV to MinIO: bucket={}, object={}", bucketName, fileName);
-
-                    long durationMs = (System.nanoTime() - startTime) / 1_000_000;
-                    meterRegistry.timer("users_export_csv_duration", "groupId", groupId).record(durationMs, TimeUnit.MILLISECONDS);
-                    meterRegistry.counter("users_export_csv_processed", "groupId", groupId).increment(userViews.size());
-                    log.info("----------{} {}", fullPath, remoteUrl);
-
-                    return new ExportedFile(null, fullPath.getFileName().toString(),
-                            "application/gzip", groupId, domainId, remoteUrl);
-
-                } catch (IOException e) {
-                    log.error("Error exporting CSV for group '{}': {}", groupId, e.getMessage());
-                    meterRegistry.counter("users_export_csv_failures", "groupId", groupId).increment();
-                    throw new InternalServerErrorException("Failed to export CSV: " + e.getMessage());
-                }
-            });
+                });
+            } catch (IOException e) {
+                throw new InternalServerErrorException("Export failed for groupId " + groupId + " and domainId " + domainId + " " + e.getMessage());
+            }
         }, exportExecutor);
+    }
+
+    private void writeCsvToFile(List<UserExportDTO> userDtos, Path path, String groupId) throws IOException {
+        try (Writer writer = new OutputStreamWriter(new GZIPOutputStream(Files.newOutputStream(path)), StandardCharsets.UTF_8)) {
+            CSVWriter csvWriter = new CSVWriter(writer, ',', '"', '"', "\n");
+            List<CsvExporter.FieldExtractor<UserFieldsExtractor.UserView>> extractors = UserFieldsExtractor.fieldExtractors();
+
+            // Header
+            String[] headers = new String[extractors.size() + 1];
+            headers[0] = HeaderNormalizer.FIELD_GROUP_ID;
+            for (int i = 0; i < extractors.size(); i++) headers[i + 1] = extractors.get(i).header();
+            csvWriter.writeNext(headers);
+
+            // Data
+            for (UserExportDTO dto : userDtos) {
+                UserFieldsExtractor.UserView view = new UserFieldsExtractor.UserView(
+                        RequestMakerUtility.buildUserFromUserExportDTO(dto),
+                        RequestMakerUtility.buildProfileFromUserExportDto(dto)
+                );
+                csvWriter.writeNext(CsvExporter.mapEntityToCsvRow(view, groupId, extractors), false);
+            }
+        }
     }
 
     @Override
@@ -134,16 +134,10 @@ public class UsersExportFormattingServiceImpl implements UsersExportFormattingSe
                 .toList();
     }
 
-    private synchronized Path createFilePath(String groupId, UUID domainId) throws IOException {
+    private Path createFilePath(String groupId, UUID domainId) throws IOException {
         Path localTempDir = Paths.get(System.getProperty("java.io.tmpdir"), "flairbit-exports", domainId.toString(), groupId);
         Files.createDirectories(localTempDir);
-
         String fileName = groupId + "_users_batch_" + UUID.randomUUID() + ".csv.gz";
-        Path localFilePath = localTempDir.resolve(fileName);
-
-        log.info("Temporary export file created at: {}", localFilePath);
-
-        return localFilePath;
+        return localTempDir.resolve(fileName);
     }
-
 }

@@ -8,10 +8,12 @@ import com.dating.flairbit.dto.enums.JobStatus;
 import com.dating.flairbit.dto.enums.NodeType;
 import com.dating.flairbit.models.*;
 import com.dating.flairbit.utils.basic.DefaultValuesPopulator;
+import io.minio.MinioClient;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Flux;
 
 import java.time.LocalDate;
@@ -158,6 +160,17 @@ public final class RequestMakerUtility {
 
     public static FileSystemMultipartFile fromPayload(MatchSuggestionsExchange payload) {
         return new FileSystemMultipartFile(payload.getFilePath(), payload.getFileName(), payload.getContentType());
+    }
+
+    public static RemoteMultipartFile fromRemotePayload(MatchSuggestionsExchange payload, MinioClient minioClient) {
+        return new RemoteMultipartFile(payload.getFilePath(), payload.getFileName(), payload.getContentType(), minioClient);
+    }
+
+    public static MultipartFile resolvePayload(MatchSuggestionsExchange payload, MinioClient minioClient) {
+        String path = payload.getFilePath();
+        if (path == null) throw new IllegalArgumentException("File path cannot be null in payload");
+        if (path.startsWith("http://") || path.startsWith("https://")) return fromRemotePayload(payload, minioClient);
+        return fromPayload(payload);
     }
 
 }

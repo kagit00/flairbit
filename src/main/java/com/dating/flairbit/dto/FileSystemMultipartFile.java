@@ -1,6 +1,7 @@
 package com.dating.flairbit.dto;
 
 import jakarta.annotation.Nonnull;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
@@ -76,18 +77,12 @@ public class FileSystemMultipartFile implements MultipartFile {
     }
 
     @Override
-    public void transferTo(File dest) throws IOException, IllegalStateException {
-        if (dest == null) {
-            throw new IllegalArgumentException("Destination file cannot be null");
-        }
+    public void transferTo(@NotNull File dest) throws IOException, IllegalStateException {
         Files.copy(filePath, dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
     }
 
     @Override
-    public void transferTo(Path dest) throws IOException, IllegalStateException {
-        if (dest == null) {
-            throw new IllegalArgumentException("Destination path cannot be null");
-        }
+    public void transferTo(@NotNull Path dest) throws IOException, IllegalStateException {
         Files.copy(filePath, dest, StandardCopyOption.REPLACE_EXISTING);
     }
 }

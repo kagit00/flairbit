@@ -12,7 +12,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.postgresql.copy.CopyManager;
 import org.postgresql.core.BaseConnection;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,11 +32,22 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 
+import reactor.core.scheduler.Schedulers;
+import java.sql.*;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class MatchSuggestionsStorageProcessor {
-    private static final long OPERATION_TIMEOUT_MS = 1_800_000;
+
+    private static final long OPERATION_TIMEOUT_MS = 1_800_000; // 30 mins
 
     private final HikariDataSource dataSource;
     private final MeterRegistry meterRegistry;
@@ -76,41 +86,55 @@ public class MatchSuggestionsStorageProcessor {
         AtomicLong totalProcessed = new AtomicLong();
 
         return matches
-                .buffer(batchSize)
+                // ✅ BOUNDED BATCHING: Prevents unbounded queue growth
+                .bufferTimeout(batchSize, Duration.ofSeconds(1))
                 .concatMap(batch -> {
-                    log.info("Queueing save of {} MatchSuggestions for groupId={}, domainId={}", batch.size(), groupId, domainId);
+                    log.info("Queueing save of {} MatchSuggestions for groupId={}, domainId={}",
+                            batch.size(), groupId, domainId);
                     totalProcessed.addAndGet(batch.size());
 
-                    return Mono.fromFuture(CompletableFuture.runAsync(() -> saveBatch(batch, groupId), ioExecutor))
-                            .doOnError(e -> {
-                                meterRegistry.counter("match_suggestions_storage_errors_total", "groupId", groupId,
-                                        "error_type", e.getClass().getSimpleName()).increment(batch.size());
-                                log.error("Failed to save {} match_suggestions for groupId={}: {}", batch.size(), groupId, e.getMessage(), e);
-                            })
-                            .onErrorResume(e -> Mono.empty());
+                    // ✅ Run DB write on bounded thread-pool WITHOUT async pile-up
+                    return Mono.fromRunnable(() -> saveBatch(batch, groupId))
+                            .subscribeOn(Schedulers.fromExecutor(ioExecutor))
+                            .onErrorResume(e -> {
+                                meterRegistry.counter("match_suggestions_storage_errors_total",
+                                                "groupId", groupId,
+                                                "error_type", e.getClass().getSimpleName())
+                                        .increment(batch.size());
+                                log.error("Failed to save {} match_suggestions for groupId={}: {}",
+                                        batch.size(), groupId, e.getMessage(), e);
+                                return Mono.empty();
+                            });
                 })
+                .limitRate(2) // ✅ Controls request rate to downstream
                 .then()
                 .doOnTerminate(() -> {
-                    long durationMs = TimeUnit.NANOSECONDS.toMillis(sample.stop(
-                            meterRegistry.timer("match_suggestions_storage_duration", "groupId", groupId)));
+                    long durationMs = TimeUnit.NANOSECONDS.toMillis(
+                            sample.stop(meterRegistry.timer("match_suggestions_storage_duration", "groupId", groupId))
+                    );
                     meterRegistry.counter("match_suggestions_storage_matches_saved_total", "groupId", groupId)
                             .increment(totalProcessed.get());
-                    log.info("Saved {} match_suggestions for groupId={} in {} ms", totalProcessed.get(), groupId, durationMs);
+                    log.info("Saved {} match_suggestions for groupId={} in {} ms",
+                            totalProcessed.get(), groupId, durationMs);
                 })
                 .timeout(Duration.ofMillis(OPERATION_TIMEOUT_MS))
                 .toFuture()
                 .exceptionally(throwable -> {
-                    long durationMs = TimeUnit.NANOSECONDS.toMillis(sample.stop(
-                            meterRegistry.timer("match_suggestions_storage_duration", "groupId", groupId)));
+                    long durationMs = TimeUnit.NANOSECONDS.toMillis(
+                            sample.stop(meterRegistry.timer("match_suggestions_storage_duration", "groupId", groupId))
+                    );
                     meterRegistry.counter("match_suggestions_storage_errors_total", "groupId", groupId,
-                            "error_type", throwable.getClass().getSimpleName()).increment(totalProcessed.get());
-                    log.error("Failed to save match_suggestions for groupId={}: {}", groupId, throwable.getMessage(), throwable);
+                                    "error_type", throwable.getClass().getSimpleName())
+                            .increment(totalProcessed.get());
+                    log.error("Failed to save match_suggestions for groupId={}: {}",
+                            groupId, throwable.getMessage(), throwable);
                     return null; // CompletableFuture<Void>
                 });
     }
 
     @Transactional
-    @Retryable(value = {SQLException.class, TimeoutException.class}, backoff = @Backoff(delay = 1000, multiplier = 2))
+    @Retryable(value = {SQLException.class, TimeoutException.class},
+            backoff = @org.springframework.retry.annotation.Backoff(delay = 1000, multiplier = 2))
     private void saveBatch(List<MatchSuggestion> batch, String groupId) {
         if (shutdownInitiated) {
             log.warn("Batch save aborted for groupId={} due to shutdown", groupId);
@@ -138,10 +162,13 @@ public class MatchSuggestionsStorageProcessor {
             }
 
             conn.commit();
-            long durationMs = TimeUnit.NANOSECONDS.toMillis(sample.stop(
-                    meterRegistry.timer("match_suggestions_storage_batch_duration", "groupId", groupId)));
-            meterRegistry.counter("match_suggestions_storage_batch_processed_total", "groupId", groupId).increment(batch.size());
-            log.debug("Saved batch of {} match_suggestions for groupId={} in {} ms", batch.size(), groupId, durationMs);
+            long durationMs = TimeUnit.NANOSECONDS.toMillis(
+                    sample.stop(meterRegistry.timer("match_suggestions_storage_batch_duration", "groupId", groupId))
+            );
+            meterRegistry.counter("match_suggestions_storage_batch_processed_total", "groupId", groupId)
+                    .increment(batch.size());
+            log.debug("Saved batch of {} match_suggestions for groupId={} in {} ms",
+                    batch.size(), groupId, durationMs);
         } catch (SQLException | IOException e) {
             log.error("Batch save failed for groupId={}: {}", groupId, e.getMessage(), e);
             throw new CompletionException("Batch save failed", e);
@@ -150,12 +177,14 @@ public class MatchSuggestionsStorageProcessor {
 
     public CompletableFuture<List<MatchSuggestion>> findFilteredSuggestions(String participantUsername, String groupId) {
         if (shutdownInitiated) {
-            log.warn("Retrieve aborted for participantUsername={} and groupId={} due to shutdown", participantUsername, groupId);
+            log.warn("Retrieve aborted for participantUsername={} and groupId={} due to shutdown",
+                    participantUsername, groupId);
             return CompletableFuture.failedFuture(new IllegalStateException("MatchSuggestionsStorageProcessor is shutting down"));
         }
 
         Timer.Sample sample = Timer.start(meterRegistry);
-        log.info("Retrieving match suggestions for participantUsername={}, groupId={}", participantUsername, groupId);
+        log.info("Retrieving match suggestions for participantUsername={}, groupId={}",
+                participantUsername, groupId);
 
         return CompletableFuture.supplyAsync(() -> {
             List<MatchSuggestion> suggestions = new ArrayList<>();
@@ -185,16 +214,19 @@ public class MatchSuggestionsStorageProcessor {
                 throw new CompletionException("Failed to retrieve match suggestions", e);
             }
         }, ioExecutor).whenComplete((result, throwable) -> {
-            long durationMs = TimeUnit.NANOSECONDS.toMillis(sample.stop(
-                    meterRegistry.timer("match_suggestions_retrieve_duration", "groupId", groupId)));
+            long durationMs = TimeUnit.NANOSECONDS.toMillis(
+                    sample.stop(meterRegistry.timer("match_suggestions_retrieve_duration", "groupId", groupId))
+            );
 
             if (throwable != null) {
                 meterRegistry.counter("match_suggestions_retrieve_errors_total", "groupId", groupId,
-                        "error_type", throwable.getClass().getSimpleName()).increment();
+                                "error_type", throwable.getClass().getSimpleName())
+                        .increment();
                 log.error("Failed to retrieve match suggestions for participantUsername={}, groupId={}: {}",
                         participantUsername, groupId, throwable.getMessage(), throwable);
             } else {
-                meterRegistry.counter("match_suggestions_retrieve_total", "groupId", groupId).increment(result.size());
+                meterRegistry.counter("match_suggestions_retrieve_total", "groupId", groupId)
+                        .increment(result.size());
                 log.info("Retrieved {} match suggestions for participantUsername={}, groupId={} in {} ms",
                         result.size(), participantUsername, groupId, durationMs);
             }

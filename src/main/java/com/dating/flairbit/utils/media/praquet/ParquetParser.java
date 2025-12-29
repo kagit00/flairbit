@@ -2,21 +2,16 @@ package com.dating.flairbit.utils.media.praquet;
 
 import com.dating.flairbit.config.factory.ResponseFactory;
 import com.dating.flairbit.dto.enums.NodeType;
-import com.dating.flairbit.exceptions.BadRequestException;
-import com.dating.flairbit.exceptions.InternalServerErrorException;
 import com.dating.flairbit.utils.media.csv.HeaderNormalizer;
 import com.dating.flairbit.utils.media.csv.RowValidator;
 import com.dating.flairbit.utils.media.csv.ValueSanitizer;
-import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.parquet.avro.AvroParquetReader;
 import org.apache.parquet.hadoop.ParquetReader;
-import org.apache.parquet.hadoop.util.HadoopInputFile;
+import org.apache.parquet.io.LocalInputFile;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.FluxSink;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,7 +23,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-@UtilityClass
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.atomic.AtomicLong;
+
+import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.DELETE_ON_CLOSE;
+
 @Slf4j
 public class ParquetParser {
 
@@ -38,54 +40,53 @@ public class ParquetParser {
     private static final ConcurrentHashMap<String, Map<String, Integer>> SCHEMA_CACHE = new ConcurrentHashMap<>();
 
     public static <T> Flux<T> parseInStream(InputStream inputStream, ResponseFactory<T> factory) {
-        return Flux.create(sink -> {
-            ParquetReader<GenericRecord> reader = null;
-            Path tempFile = null;
-            try {
-                tempFile = Files.createTempFile("parquet-import-", ".parquet");
-                try (OutputStream tempOut = Files.newOutputStream(tempFile)) {
-                    inputStream.transferTo(tempOut);
-                }
-
-                reader = AvroParquetReader.<GenericRecord>builder(
-                        HadoopInputFile.fromPath(new org.apache.hadoop.fs.Path(tempFile.toString()), new Configuration())
-                ).build();
-
-                Schema schema = null;
-                Map<String, Integer> fieldMap = null;
-                int rowIndex = 0;
-
-                GenericRecord record;
-                while ((record = reader.read()) != null && !sink.isCancelled()) {
-                    rowIndex++;
-
-                    if (schema == null) {
-                        schema = record.getSchema();
-                        fieldMap = validateSchema(schema);
+        return Flux.using(
+                () -> {
+                    // Create temp file
+                    Path tempFile = Files.createTempFile("parquet-import-", ".parquet");
+                    try (OutputStream out = Files.newOutputStream(tempFile, CREATE, DELETE_ON_CLOSE)) {
+                        inputStream.transferTo(out);
                     }
+                    ParquetReader<GenericRecord> reader = AvroParquetReader.<GenericRecord>builder(
+                            new LocalInputFile(tempFile)
+                    ).build();
+                    return Tuples.of(reader, tempFile);
+                },
+                tuple -> Flux.generate(
+                        GeneratorState::new,
+                        (state, sink) -> {
+                            try {
+                                GenericRecord record = tuple.t1().read();
+                                if (record == null) {
+                                    sink.complete();
+                                    return state;
+                                }
 
-                    T parsed = safelyParseRecord(fieldMap, record, rowIndex, factory);
-                    if (parsed != null) {
-                        sink.next(parsed);
-                    }
+                                state.rowIndex.incrementAndGet();
 
-                    // Log progress checkpoint with memory usage
-                    if (rowIndex % 1_000_000 == 0) {
-                        long memUsedMB = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
-                        log.info("Processed {} rows. Memory used: {} MB", rowIndex, memUsedMB);
-                    }
-                }
-                sink.complete();
-            } catch (IOException e) {
-                log.error("Error parsing Parquet: {}", e.getMessage(), e);
-                sink.error(new RuntimeException("Error parsing Parquet: " + e.getMessage(), e));
-            } catch (Exception e) {
-                log.error("Unexpected error during Parquet parsing: {}", e.getMessage(), e);
-                sink.error(new RuntimeException("Unexpected error: " + e.getMessage(), e));
-            } finally {
-                cleanup(reader, tempFile);
-            }
-        }, FluxSink.OverflowStrategy.BUFFER);
+                                // Validate schema on first record
+                                if (state.fieldMap == null) {
+                                    state.fieldMap = validateSchema(record.getSchema());
+                                }
+
+                                T parsed = safelyParseRecord(state.fieldMap, record, (int) state.rowIndex.get(), factory);
+                                if (parsed != null) {
+                                    sink.next(parsed);
+                                }
+
+                                // Log progress checkpoint
+                                if (state.rowIndex.get() % 1_000_000 == 0) {
+                                    long memUsedMB = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
+                                    log.info("Processed {} rows. Memory used: {} MB", state.rowIndex.get(), memUsedMB);
+                                }
+                            } catch (Exception e) {
+                                sink.error(e);
+                            }
+                            return state;
+                        }
+                ),
+                tuple -> cleanup(tuple.t1(), tuple.t2())
+        );
     }
 
     private static void cleanup(ParquetReader<GenericRecord> reader, Path tempFile) {
@@ -106,7 +107,6 @@ public class ParquetParser {
     }
 
     private static Map<String, Integer> validateSchema(Schema schema) {
-        // Use schema fingerprint as key for caching
         String schemaFingerprint = schema.toString();
         return SCHEMA_CACHE.computeIfAbsent(schemaFingerprint, k -> {
             Map<String, Integer> fieldMap = new HashMap<>();
@@ -115,7 +115,8 @@ public class ParquetParser {
                 fieldMap.put(fields.get(i).name(), i);
             }
 
-            if (!fieldMap.containsKey(HeaderNormalizer.FIELD_GROUP_ID) || !fieldMap.containsKey(HeaderNormalizer.FIELD_REFERENCE_ID)) {
+            if (!fieldMap.containsKey(HeaderNormalizer.FIELD_GROUP_ID) ||
+                    !fieldMap.containsKey(HeaderNormalizer.FIELD_REFERENCE_ID)) {
                 log.error("Parquet schema missing required fields: groupId={}, referenceId={}",
                         fieldMap.containsKey(HeaderNormalizer.FIELD_GROUP_ID) ? "present" : "missing",
                         fieldMap.containsKey(HeaderNormalizer.FIELD_REFERENCE_ID) ? "present" : "missing");
@@ -125,9 +126,6 @@ public class ParquetParser {
         });
     }
 
-    /**
-     * Safely parses a single generic record, catching and logging any errors.
-     */
     private static <T> T safelyParseRecord(Map<String, Integer> fieldMap, GenericRecord record, int rowIndex, ResponseFactory<T> factory) {
         try {
             return processRecord(fieldMap, record, rowIndex, factory);
@@ -199,5 +197,17 @@ public class ParquetParser {
             return true;
         }
         return false;
+    }
+
+    private record Tuples<T, U>(T t1, U t2) {
+
+        public static <T, U> Tuples<T, U> of(T t1, U t2) {
+                return new Tuples<>(t1, t2);
+            }
+        }
+
+    private static class GeneratorState {
+        final AtomicLong rowIndex = new AtomicLong(0);
+        Map<String, Integer> fieldMap;
     }
 }

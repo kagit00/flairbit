@@ -11,8 +11,10 @@ import com.dating.flairbit.service.match.MatchSuggestionsImportJobService;
 import com.dating.flairbit.utils.FileValidationUtility;
 import com.dating.flairbit.utils.request.RequestMakerUtility;
 import com.dating.flairbit.validation.MatchExportValidator;
+import io.minio.MinioClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -28,6 +30,7 @@ public class ImportJobServiceImpl implements ImportJobService {
     private final MatchSuggestionsImportJobRepository matchSuggestionsImportJobRepository;
     private final MatchSuggestionsImportJobService matchSuggestionsImportJobService;
     private static final int BATCH_SIZE = 10000;
+    private final MinioClient minioClient;
 
     @Override
     @Transactional
@@ -39,7 +42,7 @@ public class ImportJobServiceImpl implements ImportJobService {
         return CompletableFuture.supplyAsync(() -> {
             UUID jobId = initiateNodesImport(payload);
             log.info("Received file for group '{}': name={} path={}", payload.getGroupId(), payload.getFileName(), payload.getFilePath());
-            MultipartFile file = RequestMakerUtility.fromPayload(payload);
+            MultipartFile file = RequestMakerUtility.resolvePayload(payload, minioClient);
             FileValidationUtility.validateInput(file, payload.getGroupId());
             matchSuggestionsImportJobService.processImportedMatchSuggestions(jobId, file, payload.getGroupId(), BATCH_SIZE);
             return (Void) null;

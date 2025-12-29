@@ -4,6 +4,7 @@ import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.UploadObjectArgs;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -22,24 +23,28 @@ public class MinioUploadService {
         this.minioClient = minioClient;
     }
 
-
-    public void upload(String localPath, String objectName) {
+    @PostConstruct
+    public void init() {
         try {
-            if (!minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build())) {
+            boolean exists = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build());
+            if (!exists) {
                 minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
-                log.info("Created new bucket: {}", bucketName);
+                log.info("Created MinIO bucket: {}", bucketName);
             }
-
-            minioClient.uploadObject(
-                    UploadObjectArgs.builder()
-                            .bucket(bucketName)
-                            .object(objectName)
-                            .filename(localPath)
-                            .build()
-            );
-            log.info("Uploaded file '{}' to bucket '{}'", objectName, bucketName);
         } catch (Exception e) {
-            log.error("Failed to upload file {}: {}", localPath, e.getMessage());
+            log.error("Failed to initialize MinIO bucket: {}", e.getMessage());
         }
+    }
+
+
+    public void upload(String localPath, String objectName) throws Exception {
+        minioClient.uploadObject(
+                UploadObjectArgs.builder()
+                        .bucket(bucketName)
+                        .object(objectName)
+                        .filename(localPath)
+                        .build()
+        );
+        log.info("Successfully uploaded object '{}' to bucket '{}'", objectName, bucketName);
     }
 }
