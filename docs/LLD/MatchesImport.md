@@ -517,25 +517,7 @@ CREATE TEMPORARY TABLE temp_match_suggestions (
 
 ---
 
-## **13. Deployment & Scaling**
 
-### **13.1. Deployment Architecture**
-```mermaid
-graph TD
-    A[Kafka Consumer Pods] --> B[PostgreSQL]
-    A --> C[FlairBit Kafka]
-    A --> D[Prometheus]
-```
-
-### **13.2. Scaling Strategy**
-| **Component**               | **Scaling Approach**                          |
-|-----------------------------|-----------------------------------------------|
-| **Kafka Consumers**         | Horizontal scaling (increase `concurrency`).  |
-| **Database**                | Read replicas for job status queries.         |
-| **Batch Processing**        | Adjust `batchSize` based on load.             |
-| **Executor Service**        | Tune thread pool size (`ioExecutor`).         |
-
----
 
 ## **14. Future Enhancements**
 

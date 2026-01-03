@@ -354,41 +354,6 @@ FlairBitProducer --> Executor : uses
 
 ---
 
-## 7. Metrics & Observability
-
-| Metric Name | Description | Tags | Usage |
-|-------------|-------------|------|-------|
-| `users_export_duration` | End‑to‑end latency of a group export (from start to completion). | `groupId`, `groupType` | SLA monitoring; alerts on percentile > 5 min. |
-| `users_export_failures` | Count of groups that threw an uncaught exception. | `groupId`, `groupType` | Track systemic failures; trigger PagerDuty. |
-| `users_export_batch_failures` | Failures occurring during the per‑batch stage (CSV or Kafka). | `groupId` | Spot batches that repeatedly fail; may indicate data skew. |
-| `users_export_batch_processed` | Number of rows successfully processed per group. | `groupId` | Compute items‑per‑second KPI. |
-| `users_export_batch_duration` | Processing time for the batch (CSV creation + upload + Kafka send). | `groupId` | Helps identify groups with huge payloads; auto‑scale. |
-| `users_export_invalid_group_type` | Incremented when an unknown `groupType` is encountered. | `groupId`, `groupType` | Detect configuration drift. |
-| `users_export_csv_processed` | Counters of rows written to CSV per group. | `groupId` | Volume metrics for storage estimation. |
-| `users_export_csv_failures` | Failures during CSV export (IO, parsing). | `groupId` | Correlates with disk I/O health. |
-| `users_export_group_duration` | Duration of CSV export **only** (excluding Kafka). | `groupId`, `groupType` | Separate cost‑based vs non‑cost‑based latency. |
-| `export_to_dlq` | Counter when a Kafka send fails and ends up in DLQ. | `key`, `topic` | Monitoring downstream consumption of DLQ. |
-
-All metrics are exposed via **Micrometer** (`MeterRegistry`) and scraped by **Prometheus**; dashboards can be built in **Grafana**.
-
----
-
-## 8. Deployment & Operability Considerations
-
-| Concern | Recommendation |
-|---------|----------------|
-| **Thread‑pool sizing** | Tune `exportExecutor` (`corePoolSize`, `maxPoolSize`) based on CPU and I/O capacity. Monitor `BlockingQueue` size to detect saturation. |
-| **File‑system temp storage** | Use a dedicated, high‑throughput tmpfs or SSD partition (`/tmp/flairbit-exports`). Ensure sufficient space for concurrent batches (e.g., 10 GB per 1000 concurrent jobs × avg‑file‑size). |
-| **MinIO credentials** | Store in a secret manager (Vault, AWS Secrets Manager) and inject via `@Value`. Enable TLS for MinIO communication. |
-| **Kafka consumer lag** | Downstream consumers should monitor lag; export pipeline must not out‑pace consumption. Consider *back‑pressure* by pausing the scheduler if lag exceeds a threshold (via an admin API). |
-| **Graceful shutdown** | On `SIGTERM`, wait for in‑flight `CompletableFuture`s (use `CompletableFuture.allOf(...).orTimeout(..)`) before exiting. |
-| **Testing profile exclusion** | The `@Profile("!test")` annotation on `UsersExportScheduler` ensures the scheduler isn’t started in unit‑test contexts; separate integration test can invoke `processGroup` directly. |
-| **Observability alerts** | Create alerts on: <br>• `users_export_failures` > 0 for > 5 min <br>• `users_export_batch_failures` > 100 in 5 min <br>• `users_export_duration` 95th‑pct > 6 min |
-| **Versioning of export format** | Include a version field in the CSV header (or as a separate column) so downstream systems can evolve the schema without breaking older consumers. |
-| **Security** | Mask personally identifiable data (e.g., email, phone) if required by compliance before writing to CSV. This can be done in `UserFieldsExtractor` or via a configuration flag. |
-| **CI/CD** | Include integration test that spins up an in‑memory Kafka, a local MinIO container, and an embedded DB (e.g., H2) to verify end‑to‑end flow. Add load‑test profile that fires multiple groups concurrently. |
-
----
 
 ## 9. End‑to‑End Data Flow Summary
 
@@ -415,31 +380,3 @@ All steps are **instrumented** and **log‑driven**, providing full traceability
 
 ---
 
-## 10. Suggested Next Steps (Implementation Checklist)
-
-| ✅ | Action |
-|----|--------|
-| 1 | Add unit‑tests for each processor, especially the CSV‑generation logic and retry‑template behaviour. |
-| 2 | Write an integration test that starts an embedded **Docker Compose** stack (Kafka, MinIO, PostgreSQL) and drives the full export flow for a synthetic group. |
-| 3 | Tune `exportExecutor` pool size and verify that `maxThreads` never exceeds CPU cores × 2 (to avoid context‑switch thrashing). |
-| 4 | Configure **RetryTemplate** (maxAttempts, back‑off) for both CSV and MinIO calls – set a safe exponential back‑off (e.g., 100 ms → 300 ms → 900 ms). |
-| 5 | Add **circuit‑breaker** (Resilience4j) around Kafka send to prevent cascading failures. |
-| 6 | Implement **schema versioning** in CSV header (`ExportVersion: 1.0`). |
-| 7 | Add **rate‑limit** configuration for Kafka producer to comply with downstream consumer capacity. |
-| 8 | Create Grafana dashboards for the metrics listed in §7. |
-| 9 | Document the **temporary storage cleanup** strategy – delete files after successful upload (or via a scheduled cleanup job). |
-|10| Review **legal/compliance** needs (PII redaction, data‑retention) and adjust the export mapper accordingly. |
-
----
-
-### TL;DR
-
-The exported module is a **coordinated, async, retry‑aware pipeline** that:
-
-1. Picks up groups at a scheduled time.
-2. For each group, fetches raw users, transforms them, decides on export type, streams a gzip CSV, uploads it to MinIO, and publishes a Kafka payload containing the file metadata.
-3. All steps are **instrumented**, **retried**, and **logged**; failures are captured via counters and optionally a DLQ.
-4. Concurrency is controlled by a bounded thread‑pool; each group runs in its own `CompletableFuture`.
-5. Observability, scalability, and fault‑tolerance are baked in via Spring Retry, Micrometer, and Kafka DLQ.
-
-The diagrams and tables above give you a complete blueprint to extend, refactor, or deploy this module in a production environment.
