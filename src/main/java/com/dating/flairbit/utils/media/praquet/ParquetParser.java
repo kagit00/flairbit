@@ -23,164 +23,168 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.concurrent.atomic.AtomicLong;
 
 import static java.nio.file.StandardOpenOption.CREATE;
-import static java.nio.file.StandardOpenOption.DELETE_ON_CLOSE;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+import reactor.util.function.Tuple2;
+import reactor.util.function.Tuples;
+
 
 @Slf4j
 public class ParquetParser {
 
-    private static final ThreadLocal<Map<String, String>> METADATA_MAP_THREAD_LOCAL =
-            ThreadLocal.withInitial(HashMap::new);
-
-    private static final ConcurrentHashMap<String, Map<String, Integer>> SCHEMA_CACHE = new ConcurrentHashMap<>();
 
     public static <T> Flux<T> parseInStream(InputStream inputStream, ResponseFactory<T> factory) {
+        // Step 1: Offload the blocking IO (File Copying) to a dedicated thread pool
+        return Mono.fromCallable(() -> copyToTempFile(inputStream))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMapMany(tempFile ->
+                        processParquetFile(tempFile, factory)
+                                .subscribeOn(Schedulers.boundedElastic())
+                );
+    }
+
+    private static Path copyToTempFile(InputStream inputStream) throws IOException {
+        Path tempFile = Files.createTempFile("parquet-import-", ".parquet");
+        try (OutputStream out = Files.newOutputStream(tempFile, CREATE)) {
+            inputStream.transferTo(out);
+        }
+
+        return tempFile;
+    }
+
+    private static <T> Flux<T> processParquetFile(Path tempFile, ResponseFactory<T> factory) {
+        // Step 2: Use Flux.using to manage the Lifecycle of the Reader AND the File deletion
         return Flux.using(
                 () -> {
-                    // Create temp file
-                    Path tempFile = Files.createTempFile("parquet-import-", ".parquet");
-                    try (OutputStream out = Files.newOutputStream(tempFile, CREATE, DELETE_ON_CLOSE)) {
-                        inputStream.transferTo(out);
-                    }
                     ParquetReader<GenericRecord> reader = AvroParquetReader.<GenericRecord>builder(
-                            new LocalInputFile(tempFile)
+                            new LocalInputFile(tempFile) // Ensure LocalInputFile implements InputFile correctly
                     ).build();
                     return Tuples.of(reader, tempFile);
                 },
-                tuple -> Flux.generate(
-                        GeneratorState::new,
-                        (state, sink) -> {
-                            try {
-                                GenericRecord record = tuple.t1().read();
-                                if (record == null) {
-                                    sink.complete();
-                                    return state;
-                                }
+                tuple -> readRows(tuple.getT1(), factory),
+                tuple -> cleanup(tuple.getT1(), tuple.getT2())
+        );
+    }
 
-                                state.rowIndex.incrementAndGet();
+    private static <T> Flux<T> readRows(ParquetReader<GenericRecord> reader, ResponseFactory<T> factory) {
+        return Flux.generate(
+                GeneratorState::new,
+                (state, sink) -> {
+                    try {
 
-                                // Validate schema on first record
-                                if (state.fieldMap == null) {
-                                    state.fieldMap = validateSchema(record.getSchema());
-                                }
+                        GenericRecord record = reader.read();
 
-                                T parsed = safelyParseRecord(state.fieldMap, record, (int) state.rowIndex.get(), factory);
-                                if (parsed != null) {
-                                    sink.next(parsed);
-                                }
-
-                                // Log progress checkpoint
-                                if (state.rowIndex.get() % 1_000_000 == 0) {
-                                    long memUsedMB = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
-                                    log.info("Processed {} rows. Memory used: {} MB", state.rowIndex.get(), memUsedMB);
-                                }
-                            } catch (Exception e) {
-                                sink.error(e);
-                            }
+                        if (record == null) {
+                            sink.complete();
                             return state;
                         }
-                ),
-                tuple -> cleanup(tuple.t1(), tuple.t2())
+
+                        state.rowIndex++;
+
+                        // Validate schema on first record only
+                        if (state.fieldMap == null) {
+                            state.fieldMap = parseAndValidateSchema(record.getSchema());
+                        }
+
+                        T parsed = safelyParseRecord(state.fieldMap, record, state.rowIndex, factory);
+                        if (parsed != null) {
+                            sink.next(parsed);
+                        }
+
+                        // Log progress
+                        if (state.rowIndex % 1_000_000 == 0) {
+                            logProgress(state.rowIndex);
+                        }
+
+                    } catch (Exception e) {
+                        sink.error(e);
+                    }
+                    return state;
+                }
         );
     }
 
     private static void cleanup(ParquetReader<GenericRecord> reader, Path tempFile) {
-        if (reader != null) {
-            try {
-                reader.close();
-            } catch (IOException e) {
-                log.error("Error closing Parquet reader: {}", e.getMessage());
-            }
-        }
-        if (tempFile != null) {
-            try {
-                Files.deleteIfExists(tempFile);
-            } catch (IOException e) {
-                log.error("Error deleting temporary file {}: {}", tempFile, e.getMessage());
-            }
-        }
-    }
-
-    private static Map<String, Integer> validateSchema(Schema schema) {
-        String schemaFingerprint = schema.toString();
-        return SCHEMA_CACHE.computeIfAbsent(schemaFingerprint, k -> {
-            Map<String, Integer> fieldMap = new HashMap<>();
-            List<Schema.Field> fields = schema.getFields();
-            for (int i = 0; i < fields.size(); i++) {
-                fieldMap.put(fields.get(i).name(), i);
-            }
-
-            if (!fieldMap.containsKey(HeaderNormalizer.FIELD_GROUP_ID) ||
-                    !fieldMap.containsKey(HeaderNormalizer.FIELD_REFERENCE_ID)) {
-                log.error("Parquet schema missing required fields: groupId={}, referenceId={}",
-                        fieldMap.containsKey(HeaderNormalizer.FIELD_GROUP_ID) ? "present" : "missing",
-                        fieldMap.containsKey(HeaderNormalizer.FIELD_REFERENCE_ID) ? "present" : "missing");
-                throw new RuntimeException("Parquet must contain groupId and referenceId fields");
-            }
-            return fieldMap;
-        });
-    }
-
-    private static <T> T safelyParseRecord(Map<String, Integer> fieldMap, GenericRecord record, int rowIndex, ResponseFactory<T> factory) {
         try {
-            return processRecord(fieldMap, record, rowIndex, factory);
+            if (reader != null) reader.close();
+        } catch (IOException e) {
+            log.error("Error closing Parquet reader", e);
+        }
+
+        try {
+            if (tempFile != null) Files.deleteIfExists(tempFile);
+        } catch (IOException e) {
+            log.error("Error deleting temp file: {}", tempFile, e);
+        }
+    }
+
+    private static Map<String, Integer> parseAndValidateSchema(Schema schema) {
+        Map<String, Integer> fieldMap = new HashMap<>();
+        List<Schema.Field> fields = schema.getFields();
+        for (int i = 0; i < fields.size(); i++) {
+            fieldMap.put(fields.get(i).name(), i);
+        }
+
+        boolean hasGroupId = fieldMap.containsKey(HeaderNormalizer.FIELD_GROUP_ID);
+        boolean hasRefId = fieldMap.containsKey(HeaderNormalizer.FIELD_REFERENCE_ID);
+
+        if (!hasGroupId || !hasRefId) {
+            log.error("Parquet schema missing required fields. GroupId: {}, RefId: {}", hasGroupId, hasRefId);
+            throw new IllegalArgumentException("Parquet must contain groupId and referenceId fields");
+        }
+        return fieldMap;
+    }
+
+    private static <T> T safelyParseRecord(Map<String, Integer> fieldMap, GenericRecord record, long rowIndex, ResponseFactory<T> factory) {
+        try {
+            // New Map per record. Safe for downstream async processing.
+            Map<String, String> metadata = new HashMap<>();
+
+            Map<String, String> specialFields = extractSpecialFields(fieldMap, record, metadata);
+
+            String referenceId = specialFields.get(HeaderNormalizer.FIELD_REFERENCE_ID);
+            String groupId = specialFields.get(HeaderNormalizer.FIELD_GROUP_ID);
+            String typeStr = specialFields.get(HeaderNormalizer.FIELD_TYPE);
+
+            NodeType type = (typeStr != null) ? parseNodeType(typeStr, rowIndex) : NodeType.USER;
+
+            if (isRequiredFieldMissing(referenceId, groupId, rowIndex, record)) {
+                return null;
+            }
+
+            return factory.createResponse(type, referenceId, metadata, groupId);
         } catch (Exception e) {
             log.warn("Skipping row {} due to parsing error: {}. Record: {}", rowIndex, e.getMessage(), record);
             return null;
         }
     }
 
-    private static <T> T processRecord(Map<String, Integer> fieldMap, GenericRecord record, int rowIndex, ResponseFactory<T> factory) {
-        Map<String, String> metadata = METADATA_MAP_THREAD_LOCAL.get();
-        metadata.clear();
-
-        Map<String, String> specialFields = extractSpecialFields(fieldMap, record, rowIndex, metadata);
-
-        String referenceId = specialFields.get(HeaderNormalizer.FIELD_REFERENCE_ID);
-        String groupId = specialFields.get(HeaderNormalizer.FIELD_GROUP_ID);
-        NodeType type = specialFields.get(HeaderNormalizer.FIELD_TYPE) != null
-                ? parseNodeType(specialFields.get(HeaderNormalizer.FIELD_TYPE), rowIndex)
-                : NodeType.USER;
-
-        if (isRequiredFieldMissing(referenceId, groupId, rowIndex, record)) {
-            return null;
-        }
-
-        return factory.createResponse(type, referenceId, metadata, groupId);
-    }
-
-    private static Map<String, String> extractSpecialFields(Map<String, Integer> fieldMap, GenericRecord record, int rowIndex, Map<String, String> metadata) {
+    private static Map<String, String> extractSpecialFields(Map<String, Integer> fieldMap, GenericRecord record, Map<String, String> metadataTarget) {
         Map<String, String> specialFields = new HashMap<>();
-        specialFields.put(HeaderNormalizer.FIELD_REFERENCE_ID, null);
-        specialFields.put(HeaderNormalizer.FIELD_GROUP_ID, null);
-        specialFields.put(HeaderNormalizer.FIELD_TYPE, null);
 
         for (Map.Entry<String, Integer> entry : fieldMap.entrySet()) {
             String fieldName = entry.getKey();
-            Object value = record.get(fieldName);
-            String strValue = value != null ? ValueSanitizer.sanitize(value.toString()) : null;
+            Object rawValue = record.get(entry.getValue()); // Access by index is faster than name
+            String strValue = rawValue != null ? ValueSanitizer.sanitize(rawValue.toString()) : null;
 
             if (isSpecialField(fieldName)) {
                 specialFields.put(fieldName, strValue);
             } else {
-                metadata.put(fieldName, strValue);
+                metadataTarget.put(fieldName, strValue);
             }
         }
         return specialFields;
     }
 
     private static boolean isSpecialField(String fieldName) {
-        return fieldName.equals(HeaderNormalizer.FIELD_TYPE) ||
-                fieldName.equals(HeaderNormalizer.FIELD_REFERENCE_ID) ||
-                fieldName.equals(HeaderNormalizer.FIELD_GROUP_ID);
+        return HeaderNormalizer.FIELD_TYPE.equals(fieldName) ||
+                HeaderNormalizer.FIELD_REFERENCE_ID.equals(fieldName) ||
+                HeaderNormalizer.FIELD_GROUP_ID.equals(fieldName);
     }
 
-    private static NodeType parseNodeType(String value, int rowIndex) {
+    private static NodeType parseNodeType(String value, long rowIndex) {
         if (value == null || value.isEmpty()) return null;
         try {
             return NodeType.valueOf(value.toUpperCase());
@@ -190,24 +194,21 @@ public class ParquetParser {
         }
     }
 
-    private static boolean isRequiredFieldMissing(String referenceId, String groupId, int rowIndex, GenericRecord record) {
+    private static boolean isRequiredFieldMissing(String referenceId, String groupId, long rowIndex, GenericRecord record) {
         if (!RowValidator.isValid(referenceId, groupId)) {
-            log.warn("Row {}: Missing required fields (reference_id={}, group_id={}). Record: {}",
-                    rowIndex, referenceId, groupId, record);
+            log.warn("Row {}: Missing required fields (id={}, group={})", rowIndex, referenceId, groupId);
             return true;
         }
         return false;
     }
 
-    private record Tuples<T, U>(T t1, U t2) {
-
-        public static <T, U> Tuples<T, U> of(T t1, U t2) {
-                return new Tuples<>(t1, t2);
-            }
-        }
+    private static void logProgress(long count) {
+        long memUsedMB = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
+        log.info("Processed {} rows. Memory used: {} MB", count, memUsedMB);
+    }
 
     private static class GeneratorState {
-        final AtomicLong rowIndex = new AtomicLong(0);
+        long rowIndex = 0;
         Map<String, Integer> fieldMap;
     }
 }
